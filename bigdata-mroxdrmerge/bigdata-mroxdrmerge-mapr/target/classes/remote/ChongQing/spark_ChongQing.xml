@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<configuration>
-	<spark_driver_maxResultSize>8g</spark_driver_maxResultSize>
-	<spark_master>spark://master:7077</spark_master>
-	<spark_deploy_mode>cluster</spark_deploy_mode>
-	<yarn_nodemanager_resource_memory-mb></yarn_nodemanager_resource_memory-mb>
-	<yarn_scheduler_maximum-allocation-mb></yarn_scheduler_maximum-allocation-mb>
-	<HiveDBName>cqwlbwy</HiveDBName>
-</configuration>

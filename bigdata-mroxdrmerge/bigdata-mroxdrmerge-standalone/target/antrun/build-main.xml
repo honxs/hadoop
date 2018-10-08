@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="UTF-8" ?>
-<project name="maven-antrun-" default="main"  >
-<target name="main">
-  <move file="E:\workspace\bigdata-mroxdrmerge\bigdata-mroxdrmerge-standalone\target/classes/remote/BeiJing/" tofile="E:\workspace\bigdata-mroxdrmerge\bigdata-mroxdrmerge-standalone\target/classes"/>
-</target>
-</project>
