@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://E:/Mapr/MroPutter" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/../bigdata-mroxdrmerge" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/../bigdata-mroxdrmerge/bigdata-mroxdrmerge-api" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/../bigdata-mroxdrmerge/bigdata-mroxdrmerge-core" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/../bigdata-mroxdrmerge/bigdata-mroxdrmerge-mapr" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/../bigdata-mroxdrmerge/bigdata-mroxdrmerge-spark" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/../bigdata-mroxdrmerge/bigdata-mroxdrmerge-standalone" charset="UTF-8" />
+  </component>
+</project>

@@ -1,0 +1,71 @@
+package cn.mastercom.bigdata.util.redis;
+
+import java.util.HashSet;
+import java.util.Set;
+
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.JedisPoolConfig;
+
+public class JedisClusterFactory 
+{
+	private static JedisCluster jc = null;
+	private static HostAndPort [] hostAndPort;
+	private final static String SPLIT = ","; 
+	
+    private static class InstanceHolder 
+    {
+        private static final JedisClusterFactory instance = new JedisClusterFactory();
+    }
+
+    public static JedisClusterFactory getInstance() 
+    {
+        return InstanceHolder.instance;
+    }
+    public static void main(String[] args) {
+// 		JedisCluster jc = JedisClusterFactory.getInstance().getJedisCluster();
+// 		List<String> list =jc.lrange("1101.NCELL_22237953", 0, -1);
+//    	for (String str : list)
+//    	{
+//    		System.out.println(str);
+//    	}
+    	
+	}
+    		
+    public JedisCluster getJedisCluster(String redisConfig, int timeOut, String password) 
+    {
+    	if (jc != null)
+    	{
+    		return jc;
+    	}
+    	
+    	String [] strs = redisConfig.split(SPLIT);
+    	hostAndPort = new HostAndPort [strs.length];
+    	for (int i = 0; i < strs.length; i++)
+    	{
+    		hostAndPort[i] = new HostAndPort(strs[i].split(":")[0], Integer.valueOf(strs[i].split(":")[1]));
+    	}
+//        HostAndPort hostAndPort1 = new HostAndPort("192.168.3.152",7001);
+//        HostAndPort hostAndPort2 = new HostAndPort("192.168.3.152", 7002);
+//        HostAndPort hostAndPort3 = new HostAndPort("192.168.3.152", 7003);
+//        HostAndPort hostAndPort4 = new HostAndPort("192.168.3.152", 7004);
+//        HostAndPort hostAndPort5 = new HostAndPort("192.168.3.152", 7005);
+//        HostAndPort hostAndPort6 = new HostAndPort("192.168.3.152", 7006);
+
+        Set<HostAndPort> hostAndPorts = new HashSet<HostAndPort>();
+        for (int i = 0; i < strs.length; i++)
+        {
+        	hostAndPorts.add(hostAndPort[i]);
+        }
+//        hostAndPorts.add(hostAndPort1);
+//        hostAndPorts.add(hostAndPort2);
+//        hostAndPorts.add(hostAndPort3);
+//        hostAndPorts.add(hostAndPort4);
+//        hostAndPorts.add(hostAndPort5);
+//        hostAndPorts.add(hostAndPort6);
+
+        JedisPoolConfig config = new JedisPoolConfig();
+        jc = new JedisCluster(hostAndPorts, timeOut, 0, 30, password, config);
+        return jc;
+    }
+}

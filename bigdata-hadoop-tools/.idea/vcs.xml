@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="" vcs="svn" />
+    <mapping directory="E:/Mapr/MroPutter" vcs="svn" />
+    <mapping directory="$PROJECT_DIR$/../bigdata-common" vcs="svn" />
+    <mapping directory="$PROJECT_DIR$/../bigdata-mroxdrmerge" vcs="svn" />
+    <mapping directory="$PROJECT_DIR$/../bigdata-mroxdrmerge/bigdata-mroxdrmerge-spark" vcs="svn" />
+    <mapping directory="$PROJECT_DIR$/../bigdata-mroxdrmerge/config" vcs="svn" />
+  </component>
+</project>

@@ -1,0 +1,144 @@
+package cn.mastercom.bigdata.util.redis;
+
+import java.io.*;
+
+import redis.clients.jedis.JedisCluster;
+
+public class RedisUtil {
+    public static void main(String[] args) {
+//    	  JedisCluster jc = JedisClusterFactory.getInstance().getJedisCluster("192.168.1.72:7001,192.168.1.72:7002,192.168.1.72:7003,192.168.1.72:7004,192.168.1.72:7005,192.168.1.72:7006,", 0, "123456");
+//    	  if (jc != null)
+//    	  {
+//    		  System.out.println("zmk");
+//    		  return;
+//    	  }
+    	// 如果不以/开头,指的就是绝对路径, 如果是以/开头,指的就是classes路径
+       // String path = RedisUtil.class.getResource("/").getPath();
+    	String  path = args[0];
+       
+        int count = 0;
+        // SIMU
+        File rootDir = new File(path);
+        // 1101
+        System.out.println(rootDir.getPath());
+        File[] citesIdDirs = listDir(rootDir);
+//        for (File citesIdDir:citesIdDirs) {
+//            String keyPrefix = citesIdDir.getName() + ".";
+//            // indoor, inin, inout, ncell, out
+//            File[] types = listDir(citesIdDir);
+//            for (File type:types) {
+//                System.out.println("写完了一个文件夹");
+//                // tb_cfg_indoor_building.txt ...
+//                File[] targets = listFile(type);
+//                for (File target:targets) 
+//                {
+//                    saveToRedis(target, modifyKey(keyPrefix+target.getName()));
+//                    System.out.println(modifyKey(keyPrefix+target.getName())+"\tfrom\t"+target.toString());
+//                    count++;
+//                }
+//            }
+//        }
+        for (File citesIdDir :citesIdDirs) {
+        	System.out.println("跑到这儿没有? " + citesIdDir.getPath());
+            String keyPrefix = "";
+            if (citesIdDir.getName().contains("inin"))
+            {
+            	System.out.println(citesIdDir.getName());
+            	keyPrefix = "1101" + ".ININ_" + "17261826";
+            } 
+            else if (citesIdDir.getName().contains("inout"))
+            {
+            	keyPrefix = "1101" + ".INOUT_" + "17261826";
+            }
+            else if (citesIdDir.getName().contains("out"))
+            {
+            	keyPrefix = "1101" + ".OUT_" + "17261826";
+            }
+            else if (citesIdDir.getName().contains("ncell"))
+            {
+            	keyPrefix = "1101" + ".NCELL_" + "17261826";
+            }
+            else 
+            {
+            	keyPrefix = "1101";
+            }
+            // indoor, inin, inout, ncell, out
+           // File[] types = listDir(citesIdDir);
+            File[] types = citesIdDir.listFiles();
+            for (File type : types) {
+                System.out.println("写完了一个文件夹");
+                System.out.println(type.getPath());
+                // tb_cfg_indoor_building.txt ...
+                // File[] targets = listFile(type);
+//                for (File target:targets) 
+//                {
+                	saveToRedis(type, keyPrefix);
+//                    saveToRedis(target, modifyKey(keyPrefix+target.getName()));
+                  System.out.println("入库文件成功:  " + type);
+                  System.out.println("该文件对应的键为: " + keyPrefix);
+                    count++;
+//                }
+            }
+        }
+        System.out.println("共计写入："+ count);
+    }
+
+    public static File[] listDir(File rootDir) 
+    {
+        if (rootDir==null||rootDir.isFile()) 
+        {
+            return null;
+        }
+        return rootDir.listFiles(new FileFilter() 
+        {
+            public boolean accept(File target) {
+                return target.isDirectory();
+            }
+        });
+    }
+
+    public static File[] listFile(File rootDir) {
+        if (rootDir==null||rootDir.isFile()) {
+            return null;
+        }
+        return rootDir.listFiles(new FileFilter() {
+            public boolean accept(File target) {
+                return target.isFile();
+            }
+        });
+    }
+
+    public static String modifyKey(String key) {
+        return key.replace(".txt","").replace("FINGERPRINT_", "").replace("NEICONFIG","NCELL");
+    }
+
+    public static void saveToRedis(File target, String key) {
+        JedisCluster jc = JedisClusterFactory.getInstance().getJedisCluster("192.168.1.72:7001,192.168.1.72:7002,192.168.1.72:7003,192.168.1.72:7004,192.168.1.72:7005,192.168.1.72:7006,", 0, "123456");
+
+        BufferedReader br;
+        try {
+            br = new BufferedReader(new FileReader(target));
+        } catch (FileNotFoundException e) {
+            System.err.println(target.toString()+"NOT FOUND!!!");
+            e.printStackTrace();
+            return;
+        }
+
+        String line;
+        try {
+            while((line = br.readLine()) != null)
+            {
+                jc.rpush(key, line);
+            }
+        } catch (IOException e) {
+            System.err.println("写入到Redis有异常");
+            e.printStackTrace();
+            return;
+        } finally {
+            try {
+                br.close();
+                jc.close();
+            } catch (IOException ignored) { }
+        }
+    }
+}

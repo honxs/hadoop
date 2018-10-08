@@ -1,0 +1,83 @@
+package cn.mastercom.bigdata.util.redis;
+
+import java.util.HashSet;
+import java.util.Set;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.log4j.Logger;
+
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.LOGHelper;
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.JedisPoolConfig;
+/**
+ * 获取redis连接的工具类
+ * @author xmr
+ *
+ */
+public class JedisClusterFactory 
+{
+	private static JedisCluster jc = null;
+	private static HostAndPort [] hostAndPort;
+	private final static String SPLIT = ","; 
+	private final static Log LOG = LogFactory.getLog(JedisClusterFactory.class);
+    private static class InstanceHolder 
+    {
+        private static final JedisClusterFactory instance = new JedisClusterFactory();
+    }
+
+    public static JedisClusterFactory getInstance() 
+    {
+        return InstanceHolder.instance;
+    }
+    public static void main(String[] args) 
+    {
+    	
+	}
+    /**		
+     * 获取redis连接
+     * @param redisConfig
+     * @param timeOut
+     * @param password
+     * @return
+     */
+    public JedisCluster getJedisCluster(String redisConfig, int timeOut, String password) 
+    {
+    	try {
+    		
+    	
+    	if (jc != null)
+    	{
+    		return jc;
+    	}
+    	
+    	String [] strs = redisConfig.split(SPLIT);
+    	hostAndPort = new HostAndPort[strs.length];
+    	for (int i = 0; i < strs.length; i++)
+    	{
+    		hostAndPort[i] = new HostAndPort(strs[i].split(":")[0], Integer.valueOf(strs[i].split(":")[1]));
+    	}
+    	
+        Set<HostAndPort> hostAndPorts = new HashSet<HostAndPort>();
+        for (int i = 0; i < strs.length; i++)
+        {
+        	hostAndPorts.add(hostAndPort[i]);
+        }
+
+        JedisPoolConfig config = new JedisPoolConfig();
+        jc = new JedisCluster(hostAndPorts, timeOut, 0, 30, password, config);
+        if (jc != null)
+        {
+        	LOGHelper.GetLogger().writeLog(LogType.info, "成功连接到redis! ");
+        }
+        return jc;
+        }
+    	catch (Exception e) 
+    	{
+			LOGHelper.GetLogger().writeLog(LogType.error, "获取redis连接出现异常! ", e);
+			return jc;
+		}
+    }
+}

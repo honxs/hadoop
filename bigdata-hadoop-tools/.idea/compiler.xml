@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="bigdata-common" />
+        <module name="bigdata-hadoop-tools" />
+        <module name="bigdata-mroxdrmerge-api" />
+        <module name="bigdata-mroxdrmerge-core" />
+        <module name="bigdata-mroxdrmerge-mapr" />
+        <module name="bigdata-mroxdrmerge-spark" />
+        <module name="bigdata-mroxdrmerge-standalone" />
+        <module name="MroPutter" />
+      </profile>
+    </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="bigdata-common" target="1.7" />
+      <module name="bigdata-hadoop-tools" target="1.7" />
+      <module name="bigdata-mroxdrmerge" target="1.7" />
+      <module name="bigdata-mroxdrmerge-api" target="1.7" />
+      <module name="bigdata-mroxdrmerge-core" target="1.7" />
+      <module name="bigdata-mroxdrmerge-mapr" target="1.7" />
+      <module name="bigdata-mroxdrmerge-spark" target="1.7" />
+      <module name="bigdata-mroxdrmerge-standalone" target="1.7" />
+      <module name="MroPutter" target="1.7" />
+    </bytecodeTargetLevel>
+  </component>
+</project>

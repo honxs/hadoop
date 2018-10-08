@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="Maven: cn.mastercom.bigdata:bigdata-building-locate:1.0-SNAPSHOT">
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/cn/mastercom/bigdata/bigdata-building-locate/1.0-SNAPSHOT/bigdata-building-locate-1.0-20180816.122138-2.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$MAVEN_REPOSITORY$/cn/mastercom/bigdata/bigdata-building-locate/1.0-SNAPSHOT/bigdata-building-locate-1.0-20180816.122138-2-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$MAVEN_REPOSITORY$/cn/mastercom/bigdata/bigdata-building-locate/1.0-SNAPSHOT/bigdata-building-locate-1.0-20180816.122138-2-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

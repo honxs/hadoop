@@ -1,0 +1,97 @@
+package cn.mastercom.bigdata.util.hbase;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.CellUtil;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.util.Bytes;
+
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+
+public class HbaseDBHelper {
+	protected static Log LOG = LogFactory.getLog(HbaseDBHelper.class);
+	private static Connection conn;
+	private static HbaseDBHelper instance = null;
+	private List<Get> getList;
+	private List<String> valueList;
+	private Table table;
+	private Result[] results;
+	public static Configuration conf;
+
+	private HbaseDBHelper() {
+
+	}
+	private HbaseDBHelper(Configuration conf) {
+		HbaseDBHelper.conf = conf;
+	}
+
+	public static HbaseDBHelper getInstance() {
+		if (instance == null) {
+			LOGHelper.GetLogger().writeLog(LogType.info,  "create hbaseDBHelper instance");
+			instance = new HbaseDBHelper();
+		}
+		return instance;
+	}
+
+	/*
+	 * private void init(Configuration conf) { getConnection(conf); }
+	 */
+	public Connection getConnection(Configuration conf) {
+		try {
+			if (conn == null) {
+				conn = ConnectionFactory.createConnection(conf);
+			}
+		} catch (IOException e) {
+			LOGHelper.GetLogger().writeLog(LogType.error,"get connnection error" + e.getMessage());
+		}
+		return conn;
+
+	}
+
+	/**
+	 * 根据行键进行查询,返回的结果是一个List集合
+	 * 
+	 * @param tableName
+	 * @param rowKey
+	 * @param conn
+	 * @return
+	 */
+	public List<String> qureyAsList(String tableName, String rowKey, Connection conn) {
+		getList = new ArrayList<Get>();
+		valueList = new ArrayList<String>();
+		try {
+			table = conn.getTable(TableName.valueOf(tableName));
+		} catch (IOException e) {
+			LOGHelper.GetLogger().writeLog(LogType.error,"get table error" + e.getMessage());
+		}
+		// 把rowkey加到get里，再把get装到list中
+		Get get = new Get(Bytes.toBytes(rowKey));
+		getList.add(get);
+		try {
+			results = table.get(getList);
+		} catch (IOException e) {
+			LOGHelper.GetLogger().writeLog(LogType.error,"can't get results" + e.getMessage());
+		}
+		if (results != null) { 
+			for (Result result : results) {
+				for (Cell kv : result.rawCells()) {
+					String value = Bytes.toString(CellUtil.cloneValue(kv));
+					valueList.add(value);
+				}
+			}
+		}
+		return valueList;
+	}
+}
