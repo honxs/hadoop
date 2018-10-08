@@ -1,0 +1,93 @@
+<?xml version="1.0"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>cn.mastercom.bigdata</groupId>
+    <artifactId>bigdata-mroxdrmerge</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>bigdata-mroxdrmerge-spark</artifactId>
+  <name>bigdata-mroxdrmerge-spark</name>
+  <url>http://maven.apache.org</url>
+  
+  <properties>
+    <province>BeiJing</province>
+    <env>local</env>
+  </properties>
+  
+  <dependencies>
+    <dependency>
+  	    <groupId>cn.mastercom.bigdata</groupId>
+    	<artifactId>bigdata-mroxdrmerge-core</artifactId>
+    	<version>1.0-SNAPSHOT</version>
+    </dependency>
+  </dependencies>
+  
+   <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>1.8</version>
+                <executions>
+                    <execution>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <tasks>
+                                <move file="${project.build.directory}/classes/${env}/${province}/"
+                                      tofile="${project.build.directory}/classes" />
+                            </tasks>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin> 
+            
+             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>2.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer
+                                        implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>cn.mastercom.bigdata.spark.mroxdrmerge.MroXdrMergeMain</mainClass>
+                                </transformer>
+                            </transformers>
+							<artifactSet>
+								<includes>
+									<include>cn.mastercom*</include>
+								</includes>
+							</artifactSet>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    
+                                    <excludes>
+                                    	<exclude>org/**</exclude>
+                                    	<!-- 排除不需要的配置 -->
+                                    	<exclude>remote/**</exclude>
+                                    	<exclude>local/**</exclude>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+        
+  </build>
+</project>

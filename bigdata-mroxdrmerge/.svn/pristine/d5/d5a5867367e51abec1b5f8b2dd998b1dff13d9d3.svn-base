@@ -1,0 +1,93 @@
+package cn.mastercom.bigdata.conf.config;
+
+import cn.mastercom.bigdata.util.BitConverter;
+import cn.mastercom.bigdata.util.DPoint;
+import java.util.ArrayList;
+import java.util.List;
+
+public class PropertyInfo {
+    public int cityID;
+    public int areaTypeID;
+    public String areaTypeName;
+    public int areaID;
+    public String AreaName;
+    public int tlLongitude;
+    public int tlLatitude;
+    public int brLongitude;
+    public int brLatitude;
+    public int centerLongitude;
+    public int centerLatitude;
+    public byte[] pointShape;
+    public double areaSize;
+    public double height;
+    public int buildingCount;
+    public String business_community;
+    public String subType;
+    public List<DPoint> polygonPoints;
+
+    public PropertyInfo(String[] args)
+    {
+        int i = 0;
+        cityID  = Integer.parseInt(args[i++]);
+        areaTypeID  = Integer.parseInt(args[i++]);
+        areaTypeName  = args[i++];
+        areaID  = Integer.parseInt(args[i++]);
+        AreaName  = args[i++];
+        tlLongitude  = Integer.parseInt(args[i++]);
+        tlLatitude  = Integer.parseInt(args[i++]);
+        brLongitude  = Integer.parseInt(args[i++]);
+        brLatitude  = Integer.parseInt(args[i++]);
+        centerLongitude  = Integer.parseInt(args[i++]);
+        centerLatitude  = Integer.parseInt(args[i++]);
+        pointShape  = BitConverter.toBytes(args[i++]);
+        areaSize  = Double.parseDouble(args[i++]);
+        height  = Double.parseDouble(args[i++]);
+        buildingCount  = Integer.parseInt(args[i++]);
+        business_community  = args[i++];
+        subType  = args[i++];
+        //点阵
+        polygonPoints = getPointsFromBytes(pointShape);
+    }
+
+    private List<DPoint> getPointsFromBytes(byte[] borderBytes) {
+        List<DPoint> lstPoints = new ArrayList<DPoint>();
+        if (borderBytes == null) {
+            return lstPoints;
+        }
+        int pos = 0;
+        while (pos < borderBytes.length) {
+            int iLng = BitConverter.toInt(borderBytes, pos);
+            double lng = 1d * iLng / 10000000;
+            pos += 4;
+
+            int iLat = BitConverter.toInt(borderBytes, pos);
+            double lat = 1d * iLat / 10000000;
+            pos += 4;
+
+            lstPoints.add(new DPoint(lng, lat));
+        }
+        return lstPoints;
+    }
+
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + String.valueOf(areaID).hashCode();
+        return result;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj)
+            return true;
+        if (obj == null)
+            return false;
+        if (getClass() != obj.getClass())
+            return false;
+        PropertyInfo other = (PropertyInfo) obj;
+        if (areaID != other.areaID)
+            return false;
+        return true;
+    }
+}

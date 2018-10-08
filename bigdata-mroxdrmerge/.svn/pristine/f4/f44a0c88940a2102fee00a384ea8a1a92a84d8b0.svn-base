@@ -1,0 +1,336 @@
+package cn.mastercom.bigdata.mro.stat.struct;
+
+import java.io.Serializable;
+
+import cn.mastercom.bigdata.StructData.DT_Sample_4G;
+import cn.mastercom.bigdata.util.FormatTime;
+import cn.mastercom.bigdata.util.Func;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.TimeHelper;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+
+public class UserCell implements IStat_4G,Serializable
+{
+	public int CityID;
+	public long ECI;
+	public int Time;
+	public long Imsi;
+	public String Msisdn;
+	public int MRCnt;
+	public int MRRSRQCnt;
+	public int MRSINRCnt;
+	public float RSRPValue;
+	public float RSRQValue;
+	public float SINRValue;
+	public int MRCnt_95;
+	public int MRCnt_100;
+	public int MRCnt_103;
+	public int MRCnt_105;
+	public int MRCnt_110;
+	public int MRCnt_113;
+	public int MRCnt_128;
+	public int RSRP100_SINR0;
+	public int RSRP105_SINR0;
+	public int RSRP110_SINR3;
+	public int RSRP110_SINR0;
+	public int SINR_0;
+	public int RSRQ_14;
+	
+	//yzx add 2018/1/9
+	public int FGCnt;
+	public int OTTCnt;
+	public int RUCnt;
+	public int WLANCnt;
+	public static final String spliter = "\t";
+
+	public UserCell()
+	{
+	}
+
+	public UserCell(DT_Sample_4G sample)
+	{
+		CityID = sample.cityID;
+		ECI = sample.Eci;
+		Time = FormatTime.RoundTimeForHour(sample.itime);
+		Imsi = sample.IMSI;
+		Msisdn = sample.MSISDN;
+	}
+
+	public void doSample(DT_Sample_4G sample)
+	{
+		if (sample.IMSI <= 0 || sample.Eci <= 0)
+		{
+			return;
+		}
+		int rsrp = sample.LteScRSRP;
+		int rsrq = sample.LteScRSRQ;
+		int sinrul = sample.LteScSinrUL;
+		if (rsrp >= -150 && rsrp <= -30)
+		{
+			MRCnt++;
+			RSRPValue += rsrp;
+
+			//yzx add 2018/1/9
+			if(sample.ilongitude > 0)
+			{
+				if(sample.locType.toLowerCase().contains("fp"))
+				{
+					FGCnt++;
+				}
+				else if(sample.locType.toLowerCase().contains("ru") || sample.locType.toLowerCase().contains("wl"))
+				{
+					RUCnt++;
+				}
+				else if(sample.location == 7)
+				{
+					WLANCnt++;
+				}
+				else
+				{
+					OTTCnt++;
+				}
+			}
+			if (rsrp >= -95)
+			{
+				MRCnt_95++;
+			}
+			if (rsrp >= -100)
+			{
+				MRCnt_100++;
+			}
+			if (rsrp >= -103)
+			{
+				MRCnt_103++;
+				if (sinrul >= 0)
+				{
+					RSRP100_SINR0++;
+				}
+			}
+			if (rsrp >= -105)
+			{
+				MRCnt_105++;
+				if (sinrul >= 0)
+				{
+					RSRP105_SINR0++;
+				}
+			}
+			if (rsrp >= -110)
+			{
+				MRCnt_110++;
+				if (sinrul >= 0)
+				{
+					RSRP110_SINR0++;
+				}
+				if (sinrul >= 3)
+				{
+					RSRP110_SINR3++;
+				}
+			}
+			if (rsrp >= -113)
+			{
+				MRCnt_113++;
+			}
+			if (rsrp >= -128)
+			{
+				MRCnt_128++;
+			}
+		}
+		if (rsrq > -10000)
+		{
+			MRRSRQCnt++;
+			RSRQValue += rsrq;
+			if (rsrq >= -14)
+			{
+				RSRQ_14++;
+			}
+		}
+		if (sinrul >= -1000 && sinrul <= 1000)
+		{
+			MRSINRCnt++;
+			SINRValue += sinrul;
+			if (sinrul >= 0)
+			{
+				SINR_0++;
+			}
+		}
+	}
+
+	public String toLine()
+	{
+		StringBuffer bf = new StringBuffer();
+		bf.append(CityID);
+		bf.append(spliter);
+		bf.append(ECI);
+		bf.append(spliter);
+		bf.append(Func.getEncrypt(Imsi));
+		bf.append(spliter);
+		bf.append(Func.getEncrypt(Msisdn));
+		bf.append(spliter);
+		bf.append(Time);
+		bf.append(spliter);
+		bf.append(MRCnt);
+		bf.append(spliter);
+		bf.append(MRRSRQCnt);
+		bf.append(spliter);
+		bf.append(MRSINRCnt);
+		bf.append(spliter);
+		bf.append(RSRPValue);
+		bf.append(spliter);
+		bf.append(RSRQValue);
+		bf.append(spliter);
+		bf.append(SINRValue);
+		bf.append(spliter);
+		bf.append(MRCnt_95);
+		bf.append(spliter);
+		bf.append(MRCnt_100);
+		bf.append(spliter);
+		bf.append(MRCnt_103);
+		bf.append(spliter);
+		bf.append(MRCnt_105);
+		bf.append(spliter);
+		bf.append(MRCnt_110);
+		bf.append(spliter);
+		bf.append(MRCnt_113);
+		bf.append(spliter);
+		bf.append(MRCnt_128);
+		bf.append(spliter);
+		bf.append(RSRP100_SINR0);
+		bf.append(spliter);
+		bf.append(RSRP105_SINR0);
+		bf.append(spliter);
+		bf.append(RSRP110_SINR3);
+		bf.append(spliter);
+		bf.append(RSRP110_SINR0);
+		bf.append(spliter);
+		bf.append(SINR_0);
+		bf.append(spliter);
+		bf.append(RSRQ_14);
+		bf.append(spliter);
+		bf.append(FGCnt);
+		bf.append(spliter);
+		bf.append(OTTCnt);
+		bf.append(spliter);
+		bf.append(RUCnt);
+		bf.append(spliter);
+		bf.append(WLANCnt);		
+		return bf.toString();
+	}
+	
+	public String mergeStatToLine()
+	{
+		StringBuffer bf = new StringBuffer();
+		bf.append(CityID);
+		bf.append(spliter);
+		bf.append(ECI);
+		bf.append(spliter);
+		bf.append(Imsi);
+		bf.append(spliter);
+		bf.append(Msisdn);
+		bf.append(spliter);
+		bf.append(Time);
+		bf.append(spliter);
+		bf.append(MRCnt);
+		bf.append(spliter);
+		bf.append(MRRSRQCnt);
+		bf.append(spliter);
+		bf.append(MRSINRCnt);
+		bf.append(spliter);
+		bf.append(RSRPValue);
+		bf.append(spliter);
+		bf.append(RSRQValue);
+		bf.append(spliter);
+		bf.append(SINRValue);
+		bf.append(spliter);
+		bf.append(MRCnt_95);
+		bf.append(spliter);
+		bf.append(MRCnt_100);
+		bf.append(spliter);
+		bf.append(MRCnt_103);
+		bf.append(spliter);
+		bf.append(MRCnt_105);
+		bf.append(spliter);
+		bf.append(MRCnt_110);
+		bf.append(spliter);
+		bf.append(MRCnt_113);
+		bf.append(spliter);
+		bf.append(MRCnt_128);
+		bf.append(spliter);
+		bf.append(RSRP100_SINR0);
+		bf.append(spliter);
+		bf.append(RSRP105_SINR0);
+		bf.append(spliter);
+		bf.append(RSRP110_SINR3);
+		bf.append(spliter);
+		bf.append(RSRP110_SINR0);
+		bf.append(spliter);
+		bf.append(SINR_0);
+		bf.append(spliter);
+		bf.append(RSRQ_14);
+		bf.append(spliter);
+		bf.append(FGCnt);
+		bf.append(spliter);
+		bf.append(OTTCnt);
+		bf.append(spliter);
+		bf.append(RUCnt);
+		bf.append(spliter);
+		bf.append(WLANCnt);		
+		return bf.toString();
+	}
+
+	public static UserCell FillData(String[] vals, int pos)
+	{
+		int i = pos;
+		UserCell usercell = new UserCell();
+		try
+		{
+			usercell.CityID = Integer.parseInt(vals[i++]);
+			usercell.ECI = Long.parseLong(vals[i++]);
+			usercell.Imsi = Long.parseLong(vals[i++]);
+			usercell.Msisdn = vals[i++];
+			usercell.Time = TimeHelper.getRoundDayTime(Integer.parseInt(vals[i++]));
+			usercell.MRCnt = Integer.parseInt(vals[i++]);
+			usercell.MRRSRQCnt = Integer.parseInt(vals[i++]);
+			usercell.MRSINRCnt = Integer.parseInt(vals[i++]);
+			usercell.RSRPValue = Float.parseFloat(vals[i++]);
+			usercell.RSRQValue = Float.parseFloat(vals[i++]);
+			usercell.SINRValue = Float.parseFloat(vals[i++]);
+			usercell.MRCnt_95 = Integer.parseInt(vals[i++]);
+			usercell.MRCnt_100 = Integer.parseInt(vals[i++]);
+			usercell.MRCnt_103 = Integer.parseInt(vals[i++]);
+			usercell.MRCnt_105 = Integer.parseInt(vals[i++]);
+			usercell.MRCnt_110 = Integer.parseInt(vals[i++]);
+			usercell.MRCnt_113 = Integer.parseInt(vals[i++]);
+			usercell.MRCnt_128 = Integer.parseInt(vals[i++]);
+			usercell.RSRP100_SINR0 = Integer.parseInt(vals[i++]);
+			usercell.RSRP105_SINR0 = Integer.parseInt(vals[i++]);
+			usercell.RSRP110_SINR3 = Integer.parseInt(vals[i++]);
+			usercell.RSRP110_SINR0 = Integer.parseInt(vals[i++]);
+			usercell.SINR_0 = Integer.parseInt(vals[i++]);
+			usercell.RSRQ_14 = Integer.parseInt(vals[i++]);
+			usercell.FGCnt = Integer.parseInt(vals[i++]);
+			usercell.OTTCnt = Integer.parseInt(vals[i++]);
+			usercell.RUCnt = Integer.parseInt(vals[i++]);
+			usercell.WLANCnt = Integer.parseInt(vals[i++]);
+		}
+		catch (Exception e)
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error,"UserCell filldata error", "", e);
+		}
+		return usercell;
+	}
+
+	@Override
+	public void doSampleLT(DT_Sample_4G sample)
+	{
+		// TODO Auto-generated method stub
+
+	}
+
+	@Override
+	public void doSampleDX(DT_Sample_4G sample)
+	{
+		// TODO Auto-generated method stub
+
+	}
+
+}

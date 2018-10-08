@@ -1,0 +1,1266 @@
+package cn.mastercom.bigdata.mroxdrmerge;
+
+import cn.mastercom.bigdata.util.IConfigure;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
+public class AppConfig implements IConfigure
+{
+	private IConfigure conf;
+
+	public AppConfig(IConfigure conf)
+	{
+		this.conf = conf;
+
+		getSSHHost();
+		getSSHPort();
+		getSSHUser();
+		getSSHPwd();
+		getHadoopHost();
+		getHadoopHdfsPort();
+		getHadoopUser();
+		getHadoopPwd();
+		getMroXdrMergePath();
+		getLteCellConfigPath();
+		getPropertyConfigPath();
+		getGsmCellConfigPath();
+		getTDCellConfigPath();
+		getMroDataPath();
+		getMreDataPath();
+		getUuPath();
+		getSceneCellConfigPath();
+		// hbase相关配置
+		getConfigSimuOutTable();
+		getConfigSimuIninTable();
+		getConfigSimuInoutTable();
+		getConfigSimuIndoorTable();
+		getConfigSimuNcellTable();
+		getCellBuildTable();
+		getZookeeperQuorum();
+		getClientPort();
+		getZnodeParent();
+		getHbaseTmpDir();
+		getLeaderCellConfigPath();
+		getLeaderImsiConfigPath();
+		// 翰信二表关联配置
+		getXdrDataPath();
+		getPigBinPath();
+		getOrigXdrPath();
+		getOrigLocationPath();
+//		getRedisConfig();
+//		getRedisTimeOut();
+//		getRedisPassword();
+
+		getMrLocationPredictPath();
+	}
+
+	
+	
+
+
+	@Override
+	public boolean loadConfigure()
+	{
+		return conf.loadConfigure();
+	}
+
+	@Override
+	public boolean saveConfigure()
+	{
+		return conf.saveConfigure();
+	}
+
+	@Override
+	public Object getValue(String name)
+	{
+		return conf.getValue(name);
+	}
+
+	public String residentTime()
+	{
+		return conf.getValue("ResidentTime", "1800").toString();
+	}
+
+	@Override
+	public Object getValue(String name, Object defaultValue)
+	{
+		return conf.getValue(name, defaultValue);
+	}
+
+	@Override
+	public boolean setValue(String name, Object value)
+	{
+		return conf.setValue(name, value);
+	}
+
+	public int getCompression_ratio()
+	{
+		return Integer.parseInt(conf.getValue("compression_ratio", "10").toString());
+	}
+	
+		// cellBuildTable
+	public String getCellBuildTable() {
+		return conf.getValue("cellBuildTable", "tb_cell_build_grid").toString();
+	}
+	
+	// configSimuOutTable
+	public String getConfigSimuOutTable() {
+		return conf.getValue("configSimuOutTable", "tb_simu_out").toString();
+	}
+	
+	//configSimuIninTable
+	public String getConfigSimuIninTable() {
+		return conf.getValue("configSimuIninTable","tb_simu_inin").toString();
+	}
+	
+	//configSimuInoutTable
+	public String getConfigSimuInoutTable() {
+		return conf.getValue("configSimuInoutTable", "tb_simu_inout").toString();
+	}
+	
+	//configSimuIndoorTable
+	public String getConfigSimuIndoorTable() {
+		return conf.getValue("configSimuIndoorTable", "tb_simu_indoor").toString();
+	}
+	
+	//configSimuNcellTable
+	public String getConfigSimuNcellTable() {
+		return conf.getValue("configSimuNcellTable", "tb_simu_ncell").toString();
+	}
+	
+	public String getRedisConfig() 
+	{
+		return conf.getValue("redisConfig", "192.168.1.72:7004").toString();
+		
+	}
+	
+	public boolean setRedisConfig(String value)
+	{
+		return conf.setValue("redisConfig", value);
+	}
+	
+	public int getRedisTimeOut()
+	{
+		return Integer.valueOf(conf.getValue("redisTimeOut", "300").toString());
+	}
+	
+	public boolean setRedisTimeOut(int value)
+	{
+		return conf.setValue("redisTimeOut", value);
+	}
+	
+	public String getRedisPassword()
+	{
+		return conf.getValue("redisPassword", "mastercom168").toString();
+	}
+	
+	public boolean setRedisPassword(String value)
+	{
+		return conf.setValue("redisPassword", value);
+	}
+
+		// ClientPort
+	public int getClientPort() {
+		return Integer.parseInt(conf.getValue("ClientPort", 2181).toString());
+	}
+
+	public boolean setClientPort(int value) {
+		return conf.setValue("ClientPort", value);
+	}
+
+	// ZookeeperQuorum
+	public String getZookeeperQuorum() {
+		return conf.getValue("ZookeeperQuorum", "192.168.1.31").toString();
+	}
+	
+	public boolean setZookeeperQuorum(String value) {
+		return conf.setValue("ZookeeperQuorum", value);
+	}
+	
+	public String getZnodeParent() {
+		return conf.getValue("ZondeParent", "/hbase").toString();
+	}
+	public boolean setZnodeParent(String value) {
+		return conf.setValue("ZondeParent", value);
+	}
+
+	public String getHbaseTmpDir() {
+		
+		return conf.getValue("HbaseTmpDir" ,"/tmp").toString();
+	}
+	public boolean setHbaseTmpDir(String value) {
+		return conf.setValue("HbaseTmpDir", value);
+	}
+	// roundSize
+	public String getRoundSize()
+	{
+		return conf.getValue("roundSize", "40").toString();
+	}
+
+	// cellBuildPath
+	public String getCellBuildPath()
+	{
+		return conf.getValue("cellBuildPath", ":/mt_wlyh/Data/config/cellBuild").toString();
+	}
+
+	// cellBuildWifiPath
+	public String getCellBuildWifiPath()
+	{
+		return conf.getValue("cellBuildWifiPath", ":/mt_wlyh/Data/config/cellBuildWifi").toString();
+	}
+
+	// reduceNmu
+	public String getreduceNum()
+	{
+		return conf.getValue("reduceNmu", "5").toString();
+	}
+
+	// range
+	public String getRange()
+	{
+		return conf.getValue("range", "6").toString();
+	}
+
+	// CellNum
+	public String getCellNum()
+	{
+		return conf.getValue("CellNum", "1").toString();
+	}
+
+	// ilongitudRrandomWidth
+	public String getilongitudRrandomWidth()
+	{
+		return conf.getValue("ilongitudRrandomWidth", "0.0002").toString();
+	}
+
+	// ilatitudeRrandomWidth
+	public String getilatitudeRrandomWidth()
+	{
+		return conf.getValue("ilatitudeRrandomWidth", "0.00018").toString();
+	}
+
+	// pianyiNum
+	public String getPianyiNum()
+	{
+		return conf.getValue("pianyiNum", "1").toString();
+	}
+
+	// percent
+	public String getPercent()
+	{
+		return conf.getValue("percent", "0.8").toString();
+	}
+
+	// figureFixdFlag
+	public String getFigureFixdFlag()
+	{
+		return conf.getValue("figureFixFlag", "0").toString();
+	}
+
+	// reduce vcore
+	public String getReduceVcore()
+	{
+		return conf.getValue("reduceVcore", "1").toString();
+	}
+
+	// lzoPath
+	public String getLzoPath()
+	{
+		return conf.getValue("lzoPath", "/usr/local/lzo/lib").toString();
+	}
+
+	// mapMemory
+	public String getMapMemory()
+	{
+		return conf.getValue("mapMemory", "4096").toString();
+	}
+
+	public String getSuYanId()
+	{
+		return conf.getValue("SuYanId", "").toString();
+	}
+
+	public String getSuYanQueue()
+	{
+		return conf.getValue("SunYanQueue", "").toString();
+	}
+
+	public String getSunYanKey()
+	{
+		return conf.getValue("SunYanKey", "").toString();
+	}
+
+	public String getSuYanUser()
+	{
+		return conf.getValue("SuYanUser", "").toString();
+	}
+
+	// reduceMemory
+	public String getReduceMemory()
+	{
+		return conf.getValue("reduceMemory", "8192").toString();
+	}
+
+	// mapMemory
+	public String getMapVcore()
+	{
+		return conf.getValue("mapVcore", "1").toString();
+	}
+
+	// limitSampleNum
+	public String getLimitSampleNum()
+	{
+		return conf.getValue("limitSampleNum", "100").toString();
+	}
+
+	// size
+	public String getSize()
+	{
+		return conf.getValue("size", "10").toString();
+	}
+
+	// cellgridSrcPath
+	public String getCellgridPath()
+	{
+		return conf.getValue("cellgridSrcPath", "NULL").toString();
+	}
+
+	// adjustedSrcPath
+	public String getAdjustedSrcPath()
+	{
+		return conf.getValue("adjustedSrcPath", "NULL").toString();
+	}
+
+	// srcFigurePath
+	public String getSrcFigurePath()
+	{
+		return conf.getValue("srcFigurePath", "NULL").toString();
+	}
+
+	// eciConfigPath
+	public String getEciConfigPath()
+	{
+		return conf.getValue("eciConfigPath", "NULL").toString();
+	}
+
+	// SSHHost
+	public String getSSHHost()
+	{
+		return conf.getValue("SSHHost", "10.139.6.169").toString();
+	}
+
+	public boolean setSSHHost(String value)
+	{
+		return conf.setValue("SSHHost", value);
+	}
+
+	// SSHPort
+	public int getSSHPort()
+	{
+		return Integer.parseInt(conf.getValue("SSHPort", 22).toString());
+	}
+
+	public boolean setSSHPort(int value)
+	{
+		return conf.setValue("SSHPort", value);
+	}
+
+	// SSHUser
+	public String getSSHUser()
+	{
+		return conf.getValue("SSHUser", "root").toString();
+	}
+
+	public boolean setSSHUser(String value)
+	{
+		return conf.setValue("SSHUser", value);
+	}
+
+	// SSHPwd
+	public String getSSHPwd()
+	{
+		return conf.getValue("SSHPwd", "").toString();
+	}
+
+	public boolean setSSHPwd(String value)
+	{
+		return conf.setValue("SSHPwd", value);
+	}
+
+	// HadoopHost
+	public String getHadoopHost()
+	{
+		return conf.getValue("HadoopHost", "").toString();
+	}
+
+	public boolean setHadoopHost(String HadoopHost)
+	{
+		return conf.setValue("HadoopHost", HadoopHost);
+	}
+
+	// HadoopHdfsPort
+	public int getHadoopHdfsPort()
+	{
+		return Integer.parseInt(conf.getValue("HadoopHdfsPort", 9000).toString());
+	}
+
+	public boolean setHadoopHdfsPort(int value)
+	{
+		return conf.setValue("HadoopHdfsPort", value);
+	}
+
+	// HadoopUser
+	public String getHadoopUser()
+	{
+		return conf.getValue("HadoopUser", "root").toString();
+	}
+
+	public boolean setHadoopUser(String HadoopUser)
+	{
+		return conf.setValue("HadoopUser", HadoopUser);
+	}
+
+	// HadoopPwd
+	public String getHadoopPwd()
+	{
+		return conf.getValue("HadoopPwd", "").toString();
+	}
+
+	public boolean setHadoopPwd(String HadoopPwd)
+	{
+		return conf.setValue("HadoopPwd", HadoopPwd);
+	}
+
+	// MaprPath
+	public String getMroXdrMergePath()
+	{
+		return conf.getValue("MroXdrMergePath", "/mapr/").toString();
+	}
+
+	public boolean setMroXdrMergePath(String value)
+	{
+		return conf.setValue("MroXdrMergePath", value);
+	}
+
+	public String getInDoorSize()
+	{
+		return conf.getValue("indoorSize", "10").toString();
+	}
+
+	public String getOutDoorSize()
+	{
+		return conf.getValue("outDoorSize", "20").toString();
+	}
+
+	public String getRoundSizeIn()
+	{
+		return conf.getValue("roundSizeIn", "20").toString();
+	}
+
+	public String getRoundSizeOut()
+	{
+		return conf.getValue("roundSizeOut", "40").toString();
+	}
+
+	// LteCellConfigPath
+	public String getLteCellConfigPath()
+	{
+		return conf.getValue("LteCellConfigPath", "/mapr/").toString();
+	}
+
+	public String getPropertyConfigPath()
+	{
+		return conf.getValue("PropertyConfigPath", "/mapr/").toString();
+	}
+
+	// LteCellConfigPath
+	public String getFilterCellConfigPath()
+	{
+		return conf.getValue("FilterCellConfigPath", "/mapr/").toString();
+	}
+	
+	public String getSceneCellConfigPath()
+	{
+		return conf.getValue("SceneCellConfigPath", "/mapr/").toString();
+	}
+	
+	public boolean setSceneCellConfigPath(String value)
+	{
+		return conf.setValue("SceneCellConfigPath", value);
+	}
+	
+	public String getLeaderCellConfigPath()
+	{
+		return conf.getValue("leaderCellConfigPath", "/mapr/").toString();
+	}
+	
+	public boolean setLeaderCellConfigPath(String value)
+	{
+		return conf.setValue("leaderCellConfigPath", value);
+	}
+	
+	public String getSpecifiedCellPath()
+	{
+		return conf.getValue("specifiedCellPath", "/mapr/").toString();
+	}
+	
+	public boolean setSpecifiedCellPath(String value)
+	{
+		return conf.setValue("specifiedCellPath", value);
+	}
+	
+	
+	public String getLeaderImsiConfigPath()
+	{
+		return conf.getValue("leaderImsiConfigPath", "/mapr/").toString();
+	}
+	
+	public boolean setLeaderImsiConfigPath(String value)
+	{
+		return conf.setValue("leaderImsiConfigPath", value);
+	}
+
+	public String getRailCellConf()
+	{
+		return conf.getValue("RailCellConf", "").toString();
+	}
+
+	public String getRailStation()
+	{
+		return conf.getValue("RailRailStation", "").toString();
+	}
+
+	public String getRailRRU()
+	{
+		return conf.getValue("RailRRU", "").toString();
+	}
+
+	public String getRailConf()
+	{
+		return conf.getValue("RailConf", "").toString();
+	}
+
+	// ImeiConfigPath
+	public String getImeiConfigPath()
+	{
+		return conf.getValue("imeiCapbilityPath", ":/mt_wlyh/Data/config/imeiCapbilityTable.txt").toString();
+	}
+
+	// specialuser
+	public String getSpecialUserPath()
+	{
+		return conf.getValue("specialUserList", "/mt_wlyh/Data/specialUser/spUser.txt").toString();
+	}
+
+	public boolean setLteCellConfigPath(String value)
+	{
+		return conf.setValue("LteCellConfigPath", value);
+	}
+
+	public boolean setPropertyConfigPath(String value)
+	{
+		return conf.setValue("PropertyConfigPath", value);
+	}
+
+	// GsmCellConfigPath
+	public String getGsmCellConfigPath()
+	{
+		return conf.getValue("GsmCellConfigPath", "/mapr/").toString();
+	}
+
+	public boolean setGsmCellConfigPath(String value)
+	{
+		return conf.setValue("GsmCellConfigPath", value);
+	}
+
+	// TDCellConfigPath
+	public String getTDCellConfigPath()
+	{
+		return conf.getValue("TDCellConfigPath", "/mapr/").toString();
+	}
+
+	public boolean setTDCellConfigPath(String value)
+	{
+		return conf.setValue("TDCellConfigPath", value);
+	}
+
+	// MroDataPath
+	public String getMroDataPath()
+	{
+		return conf.getValue("MroDataPath", "/mapr/").toString();
+	}
+
+	public boolean setMroDataPath(String value)
+	{
+		return conf.setValue("MroDataPath", value);
+	}
+
+	// MTMroDataPath
+	public String getMTMroDataPath()
+	{
+		return conf.getValue("MTMroDataPath", "/mapr/").toString();
+	}
+
+	public boolean setMTMroDataPath(String value)
+	{
+		return conf.setValue("MTMroDataPath", value);
+	}
+
+	// path_ImsiCellLocPath
+	public String getPath_ImsiCellLocPath()
+	{
+		return conf.getValue("path_ImsiCellLocPath", "/mt_wlyh/Data/config/ImsiResidentCell").toString();
+	}
+
+	public String getHUAWEIMdtLogDataPath()
+	{
+		return conf.getValue("huaweiMdtLogDataPath", "/mapr").toString();
+	}
+
+	public String getHUAWEIMdtImmDataPath()
+	{
+		return conf.getValue("huaweiMdtImmDataPath", "/mapr").toString();
+	}
+	
+	public String getZTEMdtLogDataPath()
+	{
+		return conf.getValue("zteMdtLogDataPath", "/mapr").toString();
+	}
+
+	public String getZTEMdtImmDataPath()
+	{
+		return conf.getValue("zteMdtImmDataPath", "/mapr").toString();
+	}
+
+	// MreDataPath
+	public String getMdtRlfDataPath()
+	{
+		return conf.getValue("MdtRlfDataPath", "/mapr").toString();
+	}
+
+	// MreDataPath
+	public String getMreDataPath()
+	{
+		return conf.getValue("MreDataPath", "/mapr").toString();
+	}
+
+	public boolean setMreDataPath(String value)
+	{
+		return conf.setValue("MreDataPath", value);
+	}
+
+	// LocWFDataPath
+	public String getLocWFDataPath()
+	{
+		return conf.getValue("LocWFDataPath", "NULL").toString();
+	}
+
+	public boolean setLocWFDataPath(String value)
+	{
+		return conf.setValue("LocWFDataPath", value);
+	}
+
+	//////////////////////////////////// 翰信二表合一
+	//////////////////////////////////// ////////////////////////////////////////////////////////////
+	// XdrDataPath
+	public String getXdrDataPath()
+	{
+		return conf.getValue("XdrDataPath", "/result/test").toString();
+	}
+
+	public boolean setXdrDataPath(String value)
+	{
+		return conf.setValue("XdrDataPath", value);
+	}
+
+	// PigBinPath
+	public String getPigBinPath()
+	{
+		return conf.getValue("PigBinPath", "/opt/pig-0.15.0/bin").toString();
+	}
+
+	public boolean setPigBinPath(String value)
+	{
+		return conf.setValue("PigBinPath", value);
+	}
+
+	// OrigXdrPath
+	public String getOrigXdrPath()
+	{
+		return conf.getValue("OrigXdrPath", "/flume/xdr").toString();
+	}
+
+	public boolean setOrigXdrPath(String value)
+	{
+		return conf.setValue("OrigXdrPath", value);
+	}
+
+	// OrigLocationPath
+	public String getOrigLocationPath()
+	{
+		return conf.getValue("OrigLocationPath", "/flume/location").toString();
+	}
+
+	public boolean setOrigLocationPath(String value)
+	{
+		return conf.setValue("OrigLocationPath", value);
+	}
+
+	/*
+	 * public String getFsUri() { return "hdfs://" + getHadoopHost() + ":" +
+	 * getHadoopHdfsPort(); }
+	 */
+
+	// 2017-1-10 location
+	// config///////////////////////////////////////////////////
+	public String getFigureConfigPath()
+	{
+		return conf.getValue("FigureConfigPath", "/mt_wlyh/Data/config/cellfigure").toString();
+	}
+
+	public boolean setFigureConfigPath(String value)
+	{
+		return conf.setValue("FigureConfigPath", value);
+	}
+
+	public String getSimuLocConfigPath()
+	{
+		return conf.getValue("SimuLocConfigPath", "/mt_wlyh/Data/config/simuloc").toString();
+	}
+
+	public boolean setSimuLocConfigPath(String value)
+	{
+		return conf.setValue("SimuLocConfigPath", value);
+	}
+
+	// 2017-5-6 location
+	public String getSimuInSize()
+	{
+		return conf.getValue("SimuInSize", "5").toString();
+	}
+
+	public boolean setSimuInSize(String value)
+	{
+		return conf.setValue("SimuInSize", value);
+	}
+
+	public String getSimuOutSize()
+	{
+		return conf.getValue("SimuOutSize", "10").toString();
+	}
+
+	public boolean setSimuOutSize(String value)
+	{
+		return conf.setValue("SimuOutSize", value);
+	}
+
+	public String getSimuOrgInSize()
+	{
+		return conf.getValue("SimuOrgInSize", "5").toString();
+	}
+
+	public boolean setSimuOrgInSize(String value)
+	{
+		return conf.setValue("SimuOrgInSize", value);
+	}
+
+	public String getSimuOrgOutSize()
+	{
+		return conf.getValue("SimuOrgOutSize", "10").toString();
+	}
+
+	public boolean setSimuOrgOutSize(String value)
+	{
+		return conf.setValue("SimuOrgOutSize", value);
+	}
+
+	public String getSimuInAtte()
+	{
+		return conf.getValue("SimuInAtte", "0").toString();
+	}
+
+	public boolean setSimuInAtte(String value)
+	{
+		return conf.setValue("SimuInAtte", value);
+	}
+	
+	public String getSimuOutAtte()
+	{
+		return conf.getValue("SimuOutAtte", "0").toString();
+	}
+
+	public boolean setSimuOutAtte(String value)
+	{
+		return conf.setValue("SimuOutAtte", value);
+	}
+
+	// 几种xdr数据的配置
+	public String getHttpPath()
+	{
+		return conf.getValue("httpPath", "/seq/news1u_http_cut/nonono/20%1$s").toString();
+	}
+
+	public String getHttpFillType()
+	{
+		return conf.getValue("HttpFillType", "imsi").toString();
+	}
+
+	public String getMwPath()
+	{
+		return conf.getValue("mwPath", "/seq/Mw/nonono/20%1$s").toString();
+	}
+
+	public String getMwFillType()
+	{
+		return conf.getValue("MwFillType", "imsi").toString();
+	}
+
+	public String getSvPath()
+	{
+		return conf.getValue("svPath", "/seq/Sv/nonono/20%1$s").toString();
+	}
+
+	public String getSvFillType()
+	{
+		return conf.getValue("SvFillType", "imsi").toString();
+	}
+
+	public String getRxPath()
+	{
+		return conf.getValue("rxPath", "/seq/Rx/nonono/20%1$s").toString();
+	}
+
+	public String getRxFillType()
+	{
+		return conf.getValue("RxFillType", "imsi").toString();
+	}
+
+	public String getMosPath()
+	{
+		return conf.getValue("mosPath", "%1$s/NoSatisUser/nonono/data_%1$s").toString();
+	}
+
+	public String getMosFillType()
+	{
+		return conf.getValue("MosFillType", "s1apid").toString();
+	}
+
+	public String getDhwjtPath()
+	{
+		return conf.getValue("dhwjtPath", "%1$s/NoSatisUser/nonono/data_%1$s/WJtdh_%1$s").toString();
+	}
+
+	public String getDhwjtFillType()
+	{
+		return conf.getValue("DhwjtFillType", "s1apid").toString();
+	}
+
+	public String getRtpPath()
+	{
+		return conf.getValue("rtpPath", "10").toString();
+	}
+
+	public String getRtpFillType()
+	{
+		return conf.getValue("RtpFillType", "imsi").toString();
+	}
+
+	public String getMgPath()
+	{
+		return conf.getValue("mgPath", "10").toString();
+	}
+
+	public String getMgFillType()
+	{
+		return conf.getValue("MgFillType", "imsi").toString();
+	}
+
+	public String getMmePath()
+	{
+		return conf.getValue("mmePath", "nonononononono10").toString();
+	}
+
+	public String getMmeFillType()
+	{
+		return conf.getValue("MmeFillType", "imsi").toString();
+	}
+
+	public String getImsMoPath()
+	{
+		return conf.getValue("imsMoPath", "nonononononono10").toString();
+	}
+
+	public String getImsMoFillType()
+	{
+		return conf.getValue("ImsMoFillType", "s1apid").toString();
+	}
+
+	public String getImsMtPath()
+	{
+
+		return conf.getValue("imsMtPath", "nonononononono10").toString();
+	}
+
+	public String getImsMtFillType()
+	{
+
+		return conf.getValue("ImsMtFillType", "s1apid").toString();
+	}
+
+	public String getQuaLityPath()
+	{
+		return conf.getValue("quaLityPath", "nonononononono10").toString();
+	}
+
+	public String getQuaLityFillType()
+	{
+		return conf.getValue("QuaLityFillType", "s1apid").toString();
+	}
+
+	public String getUuPath()
+	{
+		return conf.getValue("UuPath", "nonononononono10").toString();
+	}
+
+	public String getUuFillType()
+	{
+		return conf.getValue("UuFillType", "imsi").toString();
+	}
+
+	public String getMdtPath()
+	{
+		return conf.getValue("mdtPath", "nonononononono10").toString();
+	}
+	public String getMdtPath2()
+	{
+		return conf.getValue("mdtOtherPath", "nonononononono10").toString();
+	}
+	public String getMdtPath3() {
+		return conf.getValue("mdtRcefPath", "nonononononono10").toString();
+	}
+
+	public String getMosShardingPath()
+	{
+		return conf.getValue("mosShardingPath","nonononono").toString();
+	}
+
+	public String getMosShardingFillType(){
+		return conf.getValue("MosShardingFillType","IMSI").toString();
+	}
+	
+	public String getMdtFillType()
+	{
+		return conf.getValue("MdtFillType", "s1apid").toString();
+	}
+
+	public String getMdtFillType2()
+	{
+		return conf.getValue("MdtOtherFillType", "s1apid").toString();
+	}
+	public String getMdtRcefFillType() {
+		return conf.getValue("MdtRcefFillType", "s1apid").toString();
+	}
+
+	
+	public boolean setUuPath(String value)
+	{
+		return conf.setValue("MTMroDataPath", value);
+	}
+
+	public String getOutXdrData()
+	{
+		return conf.getValue("outXdrData", "false").toString();
+	}
+
+
+	/**
+	 * 每个map处理多少数据
+	 * 
+	 * @return
+	 */
+	public String getDealSizeMap()
+	{
+		return conf.getValue("dealSizeMap_M", "1024").toString();
+	}
+
+	/**
+	 * 得到主节点的内存
+	 * 
+	 * @return
+	 */
+	public int getAmSizeG()
+	{
+		return Integer.parseInt(conf.getValue("AmSizeG", 16).toString());
+	}
+
+	/**
+	 * 每个reduce处理多少数据
+	 * 
+	 * @return
+	 */
+	public String getDealSizeReduce()
+	{
+		return conf.getValue("dealSizeReduce_M", "1024").toString();
+	}
+
+	/**
+	 * reduce 处理时机
+	 * 
+	 * @return
+	 */
+	public String getSlowReduce()
+	{
+		return conf.getValue("slowReduce", "1").toString();
+	}
+
+	/**
+	 * map允许失败百分比
+	 * 
+	 * @return
+	 */
+	public String getFailPrecentMap()
+	{
+		return conf.getValue("failPrecentMap", "0").toString();
+	}
+
+	public String getFailPrecentReduce()
+	{
+		return conf.getValue("failPrecentReduce", "0").toString();
+	}
+
+	/**
+	 * 高铁区间小区配置
+	 * 
+	 * @return
+	 */
+	public String getHsrSectionCellPath()
+	{
+		return conf.getValue("hsrSectionCellPath", "").toString();
+	}
+
+	public String getHsrSectionRruPath()
+	{
+		return conf.getValue("hsrSectionRruPath", "").toString();
+	}
+
+	/**
+	 * 高铁站小区配置
+	 * 
+	 * @return
+	 */
+	public String getHsrStationCellPath()
+	{
+		return conf.getValue("hsrStationCellPath", "").toString();
+	}
+
+	/**
+	 * 高铁线路配置
+	 * 
+	 * @return
+	 */
+	// public String getHsrLinePath(){
+	// return conf.getValue("hsrLinePath", "").toString();
+	// }
+	/**
+	 * 高铁站配置
+	 * 
+	 * @return
+	 */
+	public String getHsrStationPath()
+	{
+		return conf.getValue("hsrStationPath", "").toString();
+	}
+
+	/**
+	 * 高铁区间配置
+	 * 
+	 * @return
+	 */
+	public String getHsrSectionPath()
+	{
+		return conf.getValue("hsrSectionPath", "").toString();
+	}
+
+	/**
+	 * 高铁路段配置
+	 * 
+	 * @return
+	 */
+	public String getHsrSegmentPath()
+	{
+		return conf.getValue("hsrSegmentPath", "").toString();
+	}
+
+	public String getMdtImm1() {
+		return conf.getValue("mdtImm1Path", "").toString();
+	}
+	public String getMdtImm4() {
+		return conf.getValue("mdtImm4Path", "").toString();
+	}
+	public String getMdtImm5() {
+		return conf.getValue("mdtImm5Path", "").toString();
+	}
+
+	/**
+	 * 高铁室分小区配置
+	 * 
+	 * @return
+	 */
+	public String getHsrIndoorPath()
+	{
+		return conf.getValue("hsrIndoorPath", "").toString();
+	}
+
+	/**
+	 * yzx add 2017/10/30 LteScRSRP 主服场强
+	 */
+	public int getLteScRSRP()
+	{
+		return Integer.parseInt(conf.getValue("LteScRSRP", -105).toString());
+	}
+
+	/**
+	 * yzx add 2017/10/30 FreqLocDistance 基站距离
+	 */
+	public int getFreqLocDistance()
+	{
+		return Integer.parseInt(conf.getValue("FreqLocDistance", 5000).toString());
+	}
+
+	/**
+	 * yzx add 2017/11/17 BuildIdCellConfigPath 楼宇id小区配置
+	 */
+	public String getBuildIdCellConfigPath()
+	{
+		return conf.getValue("BuildIdCellConfigPath", "/mapr/").toString();
+	}
+
+	/**
+	 * yzx add 2017/11/17 HomeBroadbandConfigPath 家宽配置
+	 */
+	public String getHomeBroadbandConfigPath()
+	{
+		return conf.getValue("HomeBroadbandConfigPath", "/mapr/").toString();
+	}
+
+	/**
+	 * yzx add 2017/11/17 LteCellHomeDistance 公参与家宽距离阈值
+	 */
+	public int getLteCellHomeDistance()
+	{
+		return Integer.parseInt(conf.getValue("LteCellHomeDistance", 5000).toString());
+	}
+
+	public String getSuccessProdoceStatusValue()
+	{
+
+		return conf.getValue("successProdoceStatusValue", "0").toString();
+	}
+	
+	/**
+	 * yzx add 2018/02/26 MergeUserResidentDayNum 常驻用户汇聚天数负数表示
+	 */
+	public int getMergeUserResidentDayNum()
+	{
+		return Integer.parseInt(conf.getValue("MergeUserResidentDayNum", "-14").toString());
+	}
+	
+	/**
+	 * yzx add 2018/03/07 getMergeUserResidentTime 常驻用户汇聚多天平均时长
+	 */
+	public int getMergeUserResidentTime()
+	{
+		return Integer.parseInt(conf.getValue("MergeUserResidentTime", "7200").toString());
+	}
+	
+	/**
+	 * yzx add 2018/04/16 ResidentUserCellDistance 常驻用户小区粒度聚类的距离阈值
+	 */
+	public int getResidentUserCellDistance()
+	{
+		return Integer.parseInt(conf.getValue("ResidentUserCellDistance", 80).toString());
+	}
+
+	/**
+	 * 2，3G数据
+	 */
+	public String getGsmCallPath()
+	{
+		return conf.getValue("GsmCallPath", "/mapr").toString();
+	}
+	public String getGsmLocationPath()
+	{
+		return conf.getValue("GsmLocationPath", "/mapr").toString();
+	}
+	public String getGsmSmsPath()
+	{
+		return conf.getValue("GsmSmsPath", "/mapr").toString();
+	}
+	public String getTdCallPath()
+	{
+		return conf.getValue("TdCallPath", "/mapr").toString();
+	}
+	public String getTdLocationPath()
+	{
+		return conf.getValue("TdLocationPath", "/mapr").toString();
+	}
+	public String getTdSmsPath()
+	{
+		return conf.getValue("TdSmsPath", "/mapr").toString();
+	}
+
+	//TODO
+	public String getMdtImm1FillType() {
+		return conf.getValue("MdtImm1FillType", "s1apid").toString();
+	}
+	public String getMdtImm4FillType() {
+		return conf.getValue("MdtImm4FillType", "s1apid").toString();
+	}
+	public String getMdtImm5FillType() {
+		return conf.getValue("MdtImm5FillType", "s1apid").toString();
+	}
+	
+	/**
+	 * yzx add 2018/07/03 BuildIndoorCellUserConfigPath 楼宇楼层室分用户数配置
+	 */
+	public String getBuildIndoorCellUserConfigPath()
+	{
+		return conf.getValue("BuildIndoorCellUserConfigPath", "/mapr/").toString();
+	}
+
+    public int getTimeSchedule() {
+		String timeScheduler = conf.getValue("TimeScheduler","1").toString();
+		return Integer.parseInt(timeScheduler);
+    }
+
+	/**
+	 * 获取Mr预测楼宇文件路径
+	 */
+	public String getMrLocationPredictPath() {
+		return conf.getValue("MrLocationPredictPath", "null").toString();
+	}
+
+    public String get23GRedirect() {
+        return conf.getValue("mme23GRedirect","false").toString();
+	}
+
+	public String getMdtHofRlfRcefPath() {
+		return conf.getValue("mdtHofRlfRcefPath","/nononononono").toString();
+	}
+
+	public String getMdtHofRlfRcefFillType() {
+	   return conf.getValue("mdtHofRlfRcefFillType","S1APID").toString();
+	}
+
+	/**
+	 * 用于排除指定的ip不做任务
+	 * @return
+	 */
+	public List<String> getExcludeIpList(){
+		String ipStr = conf.getValue("excludeIpList", "").toString();
+
+		return ipStr.length() > 0 && ipStr.contains(",") ? Arrays.asList(ipStr.split(",")) : Collections.<String>emptyList();
+	}
+}

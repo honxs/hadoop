@@ -1,0 +1,267 @@
+package cn.mastercom.bigdata.mapr.evt.locall;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+import cn.mastercom.bigdata.evt.locall.model.XdrDataBase;
+import cn.mastercom.bigdata.evt.locall.model.XdrDataFactory;
+import cn.mastercom.bigdata.evt.locall.stat.S1apidEciKey;
+import cn.mastercom.bigdata.evt.locall.stat.XdrLocallexDeal2;
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.util.DataAdapterConf.ParseItem;
+import cn.mastercom.bigdata.util.DataAdapterReader;
+import cn.mastercom.bigdata.util.FilterByEci;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.ResultOutputer;
+import cn.mastercom.bigdata.util.StringHelper;
+import cn.mastercom.bigdata.util.hadoop.mapred.CombineSmallFileRecordReader;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealMapperV2;
+
+
+
+public class LocAllMapper_S1apidEci
+{
+	/**
+	 * 对位置库进行分包
+	 * @author ZhaiKaishun
+	 *
+	 */
+	public static class SiapidUserLocMapper_XDRLOC extends DataDealMapperV2<Object, Text, S1apidEciKey, Text>
+	{
+		private String locString = "";
+		//位置库按照\t分割的数组
+		private String[] valstrs;
+		private int ilongtitude;
+		private int ilatitude;
+		private S1apidEciKey s1apidKey;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException {
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+		}
+
+		@Override
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			locString = value.toString();
+			valstrs = locString.split("\t");
+			try
+			{
+				ilongtitude = Integer.parseInt(valstrs[4]);
+				ilatitude = Integer.parseInt(valstrs[5]);
+
+				long s1apid = 0;
+				if (valstrs.length > 21)
+				{
+					s1apid = Long.parseLong(valstrs[21]);
+				}
+				long eci = Long.parseLong(valstrs[18]);
+
+				if (s1apid <= 0 || eci <= 0 || ilongtitude <= 0 || ilatitude <= 0)
+				{
+					return;
+				}
+				s1apidKey = new S1apidEciKey(s1apid, eci, XdrDataFactory.LOCTYPE_XDRLOC);
+				context.write(s1apidKey, value);
+			}
+			catch (Exception e)
+			{
+                LOGHelper.GetLogger().writeLog(LogType.error, "LocAllS1apidFillDataError: ",
+                        "LocAllS1apidFillDataError：" + locString, e);
+			}
+		}
+	}
+
+	/**
+	 * 对需要做事件统计的原始数据，组成S1apidEciKey，并且进行分包
+	 * @author Zhaikaishun
+	 */
+	public static class XdrDataMapper_S1apid extends DataDealMapperV2<Object, Text, S1apidEciKey, Text>
+	{
+		//数据类型
+		private int dataType = 0;
+		private long s1apid = 0L;
+		private long ecgi = 0L;
+		//某条数据组成的对象
+		private XdrDataBase xdrDataItem = null;
+		//当前行的分隔符
+		private String curFileSplitPath = "";
+		//当前行所在文件的文件夹的路径，是文件夹的路径
+		private String tmpInPath = "";
+		// 数据路径对应的dataType，通过dataType可以用公参类实例对应的对象
+		private Map<String, Integer> pathIndexMap = null;
+		// 当前行数据的解析器
+		private ParseItem curParseItem = null;
+		// 当前行数据的解析器
+		private DataAdapterReader curDataAdapterReader = null;
+		private XdrLocallexDeal2 xdrLocallexDeal2;
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			// 加载日志构造器，multiOutPut等设置
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+			Configuration conf = context.getConfiguration();
+			String date = conf.get("mapreduce.job.date");
+			MainModel.GetInstance().setConf(conf);
+			initData(context);
+			/* 构造MultiOutput的输出对象 */
+			ResultOutputer resultOutputer = new ResultOutputer(mos);
+			xdrLocallexDeal2 = new XdrLocallexDeal2(resultOutputer);
+			// 按小区列表过滤
+			FilterByEci.readEciList(conf, date);
+		}
+
+		/**
+		 * Called once at the end of the task.
+		 */
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			super.cleanup(context);
+		}
+
+		/**
+		 * 对每一种数据都进行分包 
+		 */
+		@Override
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			if (value.toString().length() == 0)
+			{
+				return;
+			}
+			// 得到当前行所在的文件所在的目录.
+			tmpInPath = context.getConfiguration().get(CombineSmallFileRecordReader.CombineSmallFilePath);
+			if (curFileSplitPath.length() != tmpInPath.length() || !curFileSplitPath.equals(tmpInPath))
+			{
+				xdrDataItem = initDataType(tmpInPath);
+				curFileSplitPath = tmpInPath;
+				/*得到当前行数据的解析器*/
+				curParseItem = xdrDataItem.getDataParseItem();
+				if (curParseItem == null)
+				{
+					throw new IOException("parse item do not get.");
+				}
+				curDataAdapterReader = new DataAdapterReader(curParseItem);
+			}
+			/* 开始解析 */
+			String[] valstrs = value.toString().split(curParseItem.getSplitMark(), -1);
+			curDataAdapterReader.readData(valstrs);
+			try
+			{
+				if (!xdrDataItem.FillData_short(curDataAdapterReader))
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error, "LocAlls1apidMap fillData failure: class: " +
+							""+xdrDataItem
+							.getClass().getName());
+					return;
+				}
+			}
+			catch (Exception e)
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error,"locAllLocLib.fillData error", "locAllLocLib.fillData error : " +
+                        value.toString(), e);
+				return;
+			}
+
+			dataType = xdrDataItem.getDataType();
+			s1apid = xdrDataItem.getS1apid();
+			ecgi = xdrDataItem.getEcgi();
+			//eci过滤,eci如果大于Integer最大值，此eci加入了过滤列表，则进行过滤
+			if (ecgi > Integer.MAX_VALUE || !FilterByEci.ifMap(ecgi)) {
+				return;
+			}
+
+			if (MainModel.GetInstance().getCompile().Assert(CompileMark.BeiJing)){
+				if (s1apid <= 0 && ecgi <= 0){ //北京比较特殊
+					return;
+				}	
+			}
+			else if (s1apid <= 0 || ecgi <= 0)
+			{
+				if(MainModel.GetInstance().getCompile().Assert(CompileMark.NeiMeng)){
+					LocAllExUtil.neimengPushCPEData(xdrLocallexDeal2, dataType, value.toString());	
+				}
+				return;
+					
+			}
+			S1apidEciKey itemKey = new S1apidEciKey(s1apid, ecgi, dataType);
+
+			context.write(itemKey, value);
+		}
+		/**
+		 * 通过main传入的参数，给pathIndexMap赋值， key为数据路径,value为dataType
+		 * @param context
+		 */
+		private void initData(Context context)
+		{
+			String inpathindex = conf.get("mastercom.mroxdrmerge.locall.inpathindex");
+			pathIndexMap = new HashMap<String, Integer>();
+			for (String pathPare : inpathindex.split(";", -1))
+			{
+				if (pathPare.length() == 0)
+				{
+					continue;
+				}
+
+				String[] ppPare = pathPare.split("#");
+				String ppPath = ppPare[1];// 路径
+
+				if (ppPath.indexOf("hdfs://") >= 0)
+				{
+					int tm_sPos = ppPath.indexOf("/", ("hdfs://").length());
+					ppPath = ppPath.substring(tm_sPos);
+				}
+
+				ppPath = StringHelper.SideTrim(ppPath, "/");
+				ppPath = StringHelper.SideTrim(ppPath, "\\\\");
+				ppPath = "/" + ppPath;
+
+				pathIndexMap.put(ppPath, Integer.parseInt(ppPare[0]));
+			}
+		}
+		/**
+		 * @param dirPath 输入路径
+		 * @return 输入路径对应的xdrDataBase对象
+		 * @throws InterruptedException
+		 */
+		private XdrDataBase initDataType(String dirPath) throws InterruptedException
+		{
+			// hdfs://node001:9000/mt_wlyh/Data/mroxdrmerge/mro_loc/data_01_160421/TB_SIGNAL_CELL_01_160421
+			int sPos = dirPath.indexOf("/", ("hdfs://").length());
+			String formatPath = dirPath.substring(sPos);
+			if (dirPath.startsWith("file:"))
+			{
+				formatPath = dirPath.replace("file:", "");
+			}
+			if (!pathIndexMap.containsKey(formatPath))
+			{
+				throw new InterruptedException("path index is not found, please check : " + formatPath);
+			}
+
+			int mergeType = pathIndexMap.get(formatPath);
+
+			try
+			{
+				return XdrDataFactory.GetInstance().getXdrDataObject(mergeType);
+			}
+			catch (Exception e)
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error, "LocAllMapper_s1apidEci mergeType error","mergeType: " +
+                        mergeType + " " +
+                        "formatPath: " +
+                        formatPath,e);
+				throw new InterruptedException("init data type error :" + mergeType + " " + e.getMessage());
+			}
+		}
+
+	}
+
+}

@@ -1,0 +1,36 @@
+package cn.mastercom.bigdata.mro.stat;
+
+import cn.mastercom.bigdata.StructData.DT_Sample_4G;
+import cn.mastercom.bigdata.mro.stat.struct.Stat_BuildCellPos;
+import cn.mastercom.bigdata.util.FormatTime;
+import cn.mastercom.bigdata.util.ResultOutputer;
+
+public class BuildCellPosStatDo_4G extends AMapStatDo_4G<Stat_BuildCellPos>
+{
+	public BuildCellPosStatDo_4G(ResultOutputer typeResult, int sourceType, int confidenceType, int dataType)
+	{
+		super(typeResult, sourceType, confidenceType, dataType);
+	}
+
+	@Override
+	protected Stat_BuildCellPos createFirstStatItem(DT_Sample_4G sample, Object[] keys)
+	{
+		Stat_BuildCellPos statBuildCellPos = new Stat_BuildCellPos();
+		statBuildCellPos.doFirstSample(sample, (int) keys[5]);
+		return statBuildCellPos;
+	}
+
+	@Override
+	protected Object[] getPartitionKeys(DT_Sample_4G sample)
+	{
+		int ifreq = getIfreq(sourceType, sample);
+		return new Object[] { sample.cityID, sample.ibuildingID, sample.iheight, sample.Eci, sample.position, ifreq, FormatTime.RoundTimeForHour(sample.itime) };
+	}
+
+	@Override
+	protected boolean statOrNot(DT_Sample_4G sample)
+	{
+		return sample.Eci > 0 && sample.ibuildingID > 0;
+	}
+
+}

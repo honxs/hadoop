@@ -1,0 +1,308 @@
+package cn.mastercom.bigdata.conf.config;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+
+import cn.mastercom.bigdata.mro.loc.MroXdrDeal;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.client.Connection;
+
+import cn.mastercom.bigdata.conf.cellconfig.LteCellInfo;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.util.GisFunction;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.hadoop.hdfs.FileReader;
+import cn.mastercom.bigdata.util.hadoop.hdfs.FileReader.LineHandler;
+import cn.mastercom.bigdata.util.hbase.HbaseDBHelper;
+
+public class CellBuildInfo
+{
+
+	private String cellBuildPath = "";
+	private String cellBuildTableName ="";
+	public HashMap<String, List<Integer>> cellBuildsMap;
+	private HashMap<Integer, String> cellBuildCenterMap;
+	private final int LotPerMeter = 100;
+	private final int LatPerMeter = 90;
+	private final double Rx = 10 * LotPerMeter;//10米栅格
+	private final double Ry = 10 * LatPerMeter;
+	private String mroXdrMergePath;
+	private LteCellInfo cellInfo;
+	private int buildID;
+    /**
+     * eci中的经纬度与cellBuild的经纬度的距离，取最小的值
+     */
+	public double minDistance = Integer.MAX_VALUE;
+
+	public CellBuildInfo() throws IOException
+	{
+		cellBuildPath = MainModel.GetInstance().getAppConfig().getCellBuildPath();
+		cellBuildsMap = new HashMap<String, List<Integer>>();
+		cellBuildCenterMap = new HashMap<Integer, String>();
+		mroXdrMergePath = MainModel.GetInstance().getAppConfig().getMroXdrMergePath();
+        cellInfo = null;
+        minDistance = Integer.MAX_VALUE;
+        buildID=0;
+	}
+
+	public void setCellInfo(LteCellInfo lteCellInfo){
+	    this.cellInfo = lteCellInfo;
+    }
+
+	public boolean loadCellBuild(Configuration conf, long eci, int cityid)
+	{
+		String path = cellBuildPath + "/cell_build_grid_" + cityid + "_" + eci + ".bcp.gz";
+		return loadCellBuild(conf, path);//所有地市读明文配置
+	}
+
+	public static void main(String args[])
+	{
+		try
+		{
+			CellBuildInfo tempcellbuild = new CellBuildInfo();
+			for (String key : tempcellbuild.cellBuildsMap.keySet())
+			{
+				System.out.print(key + ":");
+				System.out.println(tempcellbuild.cellBuildsMap.get(key));
+			}
+			// 1165287000_398339100 [1024271]
+			System.out.println("buildIdStr:" + tempcellbuild.getBuildIds(1165287000, 398339100));
+			
+			/*for (Map.Entry<String, List<Integer>> entry : tempcellbuild.cellBuildsMap.entrySet())
+			{
+				System.out.println("key:" + entry.getKey() +" value:" + entry.getValue());
+			}*/
+		}
+		catch (IOException e)
+		{
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	public boolean loadCellBuild(Configuration conf, String filePath)
+	{
+		try {
+			FileReader.readFile(conf, filePath, new LineHandler() {
+
+				@Override
+				public void handle(String line) {
+					loadCellBuildValue(line);
+				}
+			});
+		} catch (Exception e1) {
+			LOGHelper.GetLogger().writeLog(LogType.error,"loadcellBuild error", "loadcellBuild error " + filePath, e1);
+			return false;
+		}
+//		DataInputStream reader = null;
+//		HDFSOper hdfsOper = null;
+//		String filename = "";
+//		try
+//		{
+//			if (!filePath.contains(":"))
+//			{
+//				hdfsOper = new HDFSOper(conf);
+//				filename = filePath.substring(filePath.lastIndexOf("/")+1);
+//				hdfsOper.mkfile(mroXdrMergePath+"/cellFlag/"+filename);
+//				if (!hdfsOper.checkFileExist(filePath))
+//				{
+//					LOGHelper.GetLogger().writeLog(LogType.error, "cellBuild config is not exists: " + filePath);
+//					return false;
+//				}
+//				reader = new DataInputStream(new GZIPInputStream(hdfsOper.getHdfs().open(new Path(filePath))));
+//			}
+//			else if (filePath.endsWith(".gz"))
+//			{
+//				reader = new DataInputStream(new GZIPInputStream(new FileInputStream(filePath)));
+//			}
+//			else
+//			{
+//				reader = new DataInputStream(new FileInputStream(filePath));
+//			}
+//			
+//			String line = "";
+//			while((line=reader.readLine())!=null)
+//			{
+//				loadCellBuildValue(line);
+//			}
+//			
+//		}
+//		catch (Exception e)
+//		{
+//			LOGHelper.GetLogger().writeLog(LogType.error, "loadcellBuild error " + filePath, e);
+//			return false;
+//		}
+//		finally
+//		{
+//			try
+//			{
+//				hdfsOper.delete(mroXdrMergePath+"/cellFlag/"+filename);
+//				if (reader != null)
+//				{
+//					reader.close();
+//				}
+//			}
+//			catch (Exception e)
+//			{
+//
+//			}
+//		}
+		return true;
+	}
+	
+	// 采用hbase读取楼宇配置时的处理
+	public boolean loadCellBuildHbase(Configuration conf, long eci, int cityid) {
+		cellBuildTableName =  MainModel.GetInstance().getAppConfig().getCellBuildTable();
+		String rowKey = eci + "_" + cityid;
+		HbaseDBHelper hbaseDB = HbaseDBHelper.getInstance();
+		Connection conn = hbaseDB.getConnection(conf);
+		List<String> valueList = hbaseDB.qureyAsList(cellBuildTableName, rowKey, conn);
+		return loadCellBuildHbase(valueList);
+	}
+	
+	public boolean loadCellBuildHbase(List<String> valueList) {
+		if (valueList.size() == 0) 
+		{
+			return false;
+		}
+		for (String line : valueList) {
+			loadCellBuildValue(line);
+		}
+		return true;
+	}
+	
+	public HashMap<Integer, String> getCellBuildCenterMap()
+	{
+		return cellBuildCenterMap;
+	}
+	
+	public List<Integer> getBuildIds(int longitude, int latitude)
+	{
+		String gridString = (longitude / 1000 * 1000) + "_" + ((latitude / 900) * 900);
+		return cellBuildsMap.get(gridString);
+	}
+	
+	public String getCenterLngLat(int buildId)
+	{
+		if (cellBuildCenterMap.get(buildId) != null)
+		{
+			return cellBuildCenterMap.get(buildId);
+		}
+		return null;
+	}
+
+	public boolean loadCellBuildValue(String value)
+	{
+
+		long centerLongitude = 0L;
+		long centerLatitude = 0L;
+		String[] strs = value.split("\t|;", -1);
+		try
+		{
+			int buildingID = Integer.parseInt(strs[2]);
+			List<Integer> buildIdList = null;
+			for (int i = 3; i < strs.length; i++) 
+			{   
+				String [] locationArray = strs[i].split(",", -1); 
+				int longitude = (int) (Double.parseDouble(locationArray[0])*10000000) / 1000 * 1000;
+				int latitude = (int) (Double.parseDouble(locationArray[1])*10000000) / 900 * 900;
+				centerLongitude += longitude;
+				centerLatitude += latitude;
+				if (!cellBuildsMap.containsKey(longitude + "_" + latitude))
+				{
+					buildIdList = new ArrayList<Integer>();
+					buildIdList.add(buildingID);
+					cellBuildsMap.put(longitude + "_" + latitude, buildIdList);
+				}
+				else
+				{
+					buildIdList = cellBuildsMap.get(longitude + "_" + latitude);
+					if(!buildIdList.contains(buildingID))
+					{
+					    buildIdList.add(buildingID);
+					    cellBuildsMap.put(longitude + "_" + latitude, buildIdList);
+					}
+				}
+				
+			}
+            centerLongitude = centerLongitude / (strs.length - 3);
+			centerLatitude = centerLatitude / (strs.length - 3);
+            cellBuildCenterMap.put(buildingID, centerLongitude + "_" + centerLatitude);
+            if(cellInfo!=null && cellInfo.indoor==1){
+                double curDistance = GisFunction.GetDistance(cellInfo.ilongitude, cellInfo.ilatitude,
+                        centerLongitude, centerLatitude);
+                if(curDistance<minDistance){
+                    buildID = buildingID;
+                    minDistance = curDistance;
+                }
+            }
+
+
+        }
+		catch (Exception e)
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "loadCellBuildValue error: " + value);
+			return false;
+		}
+		return true;
+	}
+	public int getBuildID(){
+	    return buildID;
+    }
+
+	
+	//找离小区最近的楼宇
+	public int getBuildId(LteCellInfo cellInfo)
+	{
+		long tempDistance = 0; // 缓存距离
+		long maxDistance = 3000; // 最大距离
+		int minBuildId = -1; // 最小距离对应楼宇id
+		for (Integer buildId : cellBuildCenterMap.keySet())
+		{
+			String centerLngLat = cellBuildCenterMap.get(buildId);
+			if (centerLngLat != null)
+			{
+				String[] value = centerLngLat.split("_", -1);
+				int centerLongitude = Integer.parseInt(value[0]);
+				int centerLatitude = Integer.parseInt(value[1]);
+				tempDistance = (long) GisFunction.GetDistance(centerLongitude, centerLatitude,
+						cellInfo.ilongitude, cellInfo.ilatitude);
+				if (tempDistance < maxDistance)
+				{
+					maxDistance = tempDistance;
+					minBuildId = buildId;
+				}
+			}
+		}
+		return minBuildId;
+	}
+	
+	//找离某个位置最近的楼宇
+	public int getBuildId(int longitude, int latitude, long maxDistance)
+	{
+		long tempDistance = 0; // 缓存距离
+		int minBuildId = -1; // 最小距离对应楼宇id
+		for (Integer buildId : cellBuildCenterMap.keySet())
+		{
+			String centerLngLat = cellBuildCenterMap.get(buildId);
+			if (centerLngLat != null)
+			{
+				String[] value = centerLngLat.split("_", -1);
+				int centerLongitude = Integer.parseInt(value[0]);
+				int centerLatitude = Integer.parseInt(value[1]);
+				tempDistance = (long) GisFunction.GetDistance(centerLongitude, centerLatitude,
+						longitude, latitude);
+				if (tempDistance < maxDistance)
+				{
+					maxDistance = tempDistance;
+					minBuildId = buildId;
+				}
+			}
+		}
+		return minBuildId;
+	}
+	
+}

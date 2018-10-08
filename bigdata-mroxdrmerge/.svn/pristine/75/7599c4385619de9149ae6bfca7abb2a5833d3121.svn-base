@@ -1,0 +1,123 @@
+package cn.mastercom.bigdata.mapr.mro.loc;
+
+import java.io.IOException;
+import java.util.Iterator;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.log4j.Logger;
+
+import cn.mastercom.bigdata.StructData.StaticConfig;
+import cn.mastercom.bigdata.mro.loc.CellTimeKey;
+import cn.mastercom.bigdata.mro.loc.MroXdrDeal;
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.ResultOutputer;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealReducerV2;
+import cn.mastercom.bigdata.util.hbase.HbaseDBHelper;
+import cn.mastercom.bigdata.util.redis.JedisClusterFactory;
+import redis.clients.jedis.JedisCluster;
+
+public class MroLableFileReducers
+{
+	protected static Logger LOG = Logger.getLogger(MroLableFileReducers.class);
+
+	public static class MroDataFileReducers extends DataDealReducerV2<CellTimeKey, Text, NullWritable, Text>
+	{
+		private ResultOutputer resultOutputer;
+
+		private MroXdrDeal mroXdrDeal;
+		private JedisCluster jc;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			super.setup(context);
+			resultOutputer = new ResultOutputer(mos);
+			if (MainModel.GetInstance().getCompile().Assert(CompileMark.GuangXi2) && MainModel.GetInstance().getCompile().Assert(CompileMark.UserLoc3)) 
+			{		
+				// 广西未来会使用redis来存储指纹库配置,在这里需要获取到指纹库的连接
+				String redisConfig = MainModel.GetInstance().getAppConfig().getRedisConfig();
+				int  redisTimeOut = MainModel.GetInstance().getAppConfig().getRedisTimeOut();
+				String redisPassword = MainModel.GetInstance().getAppConfig().getRedisPassword();
+				LOGHelper.GetLogger().writeLog(LogType.info, "redis的连接配置为: " + redisConfig +" redis的超时时间为: " + redisTimeOut + "redis的密码为: " + redisPassword);
+				jc = JedisClusterFactory.getInstance().getJedisCluster(redisConfig, redisTimeOut, redisPassword);
+				if (jc != null)
+				{
+					LOGHelper.GetLogger().writeLog(LogType.info, "成功连接到redis! 连接为 " + redisConfig);
+				}
+				else
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error, "未能连接到redis! 请检查redis相关配置! ");
+				}
+//				
+			}
+			MainModel.GetInstance().setConf(conf);
+			mroXdrDeal = new MroXdrDeal(resultOutputer);
+		}
+
+		/**
+		 * Called once at the end of the task.
+		 */
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			try
+			{
+				LOGHelper.GetLogger().writeLog(LogType.info, "begin	 cleanup:");
+				mroXdrDeal.dataStater.outResult();// event
+				mroXdrDeal.outAllData();
+				LOGHelper.GetLogger().writeLog(LogType.info, "end cleanup:");
+			}
+			catch (Exception e)
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error, "output data error ", e);
+			}
+			finally
+			{
+				if (MainModel.GetInstance().getCompile().Assert(CompileMark.GuangXi2)) 
+				{
+					if (jc != null)
+					{
+						jc.close();
+					}
+				}
+			}
+
+			super.cleanup(context);
+		}
+
+		@Override
+		public void reduce(CellTimeKey key, Iterable<Text> values, Context context) throws IOException, InterruptedException
+		{
+			mroXdrDeal.init(key);
+			int pushDataFlag = 0;
+			Iterator<Text> iterator = values.iterator();
+			while (iterator.hasNext())
+			{
+				String value = iterator.next().toString();
+				try
+				{
+					pushDataFlag = mroXdrDeal.pushData(key, value);
+					if (pushDataFlag == StaticConfig.FAILURE)
+					{
+						return;
+					}
+				}
+				catch (Exception e)
+				{
+					e.printStackTrace();
+				}
+			}
+
+			mroXdrDeal.statData();
+			mroXdrDeal.outData();
+		}
+	}
+
+}

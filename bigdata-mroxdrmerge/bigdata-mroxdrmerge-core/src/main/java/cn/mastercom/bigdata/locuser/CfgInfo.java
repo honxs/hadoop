@@ -1,0 +1,590 @@
+package cn.mastercom.bigdata.locuser;
+
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.GZIPInputStream;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+
+import cn.mastercom.bigdata.conf.cellconfig.CellConfig;
+import cn.mastercom.bigdata.conf.cellconfig.LteCellInfo;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.hadoop.hdfs.HDFSOper;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+
+public class CfgInfo
+{
+	public Map<String, CfgCell> cfgncell = new HashMap<String, CfgCell>();
+	// 20170311 cai的需求一个小区对多个楼宇
+	// public Map<Integer, Integer> cfgindoor = new HashMap<Integer, Integer>();
+	public Map<Integer, String> cfgindoor = new HashMap<Integer, String>();
+	public Map<Integer, Integer> cfgbuilds = new HashMap<Integer, Integer>();
+	public Map<Integer, Integer> cfgout = new HashMap<Integer, Integer>();
+	public CellConfig lcconf = null;
+	private HDFSOper hdfsOper = null;
+
+	public boolean Init(Configuration conf)
+	{
+		try
+		{
+			hdfsOper = new HDFSOper(conf);
+		}
+		catch (Exception e1)
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error,"cfginfoInitError", "", e1);
+		}
+		if (!GetIndoor())
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "GetIndoor error");
+			return false;
+		}
+
+		if (!GetCell(conf))
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "GetCell error");
+			return false;
+		}
+
+		if (!GetOut())
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "GetOut error");
+			return false;
+		}
+
+		if (!GetNCell())
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "GetNCell error");
+			return false;
+		}
+
+		return true;
+	}
+
+	public void Clear()
+	{
+		cfgbuilds.clear();
+		cfgindoor.clear();
+		cfgncell.clear();
+		cfgout.clear();
+	}
+
+	private boolean checkFileExist(String filename, FileSystem hdfs)
+	{
+		try
+		{
+			Path f = new Path(filename);
+			return hdfs.exists(f);
+		}
+		catch (Exception e)
+		{
+			e.printStackTrace();
+		}
+		return false;
+	}
+
+	private boolean GetIndoor()
+	{
+		cfgindoor.clear();
+		cfgbuilds.clear();
+		// select distinct eci,buildingID from tb_cfg_indoor_building
+		String strPath = MainModel.GetInstance().getAppConfig().getSimuLocConfigPath() + "/tb_cfg_indoor_building.txt"; // "/mt_wlyh/Data/config_loc/tb_cfg_indoor_building.txt";
+		LOGHelper.GetLogger().writeLog(LogType.info, "config : " + strPath);
+		BufferedReader reader = null;
+		try
+		{
+			if (!strPath.contains(":"))
+			{
+				// Configuration conf = new Configuration();
+				// DistributedFileSystem hdfs;
+				// try
+				// {
+				// hdfs = (DistributedFileSystem) FileSystem.get(conf);
+				// }
+				// catch (IOException e1)
+				// {
+				// LOGHelper.GetLogger().writeLog(LogType.error,
+				// e1.getMessage());
+				// e1.printStackTrace();
+				// return false;
+				// }
+				// LOGHelper.GetLogger().writeLog(LogType.info, strPath);
+				if (!hdfsOper.checkFileExist(strPath))
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error, "config not exists : " + strPath);
+					return false;
+				}
+				reader = new BufferedReader(new InputStreamReader(hdfsOper.getHdfs().open(new Path(strPath)), "UTF-8"));
+			}
+			else
+			{
+				reader = new BufferedReader(new InputStreamReader(new FileInputStream(strPath), "UTF-8"));
+			}
+
+			String strData;
+			String[] values;
+			while ((strData = reader.readLine()) != null)
+			{
+				if (strData.length() == 0)
+				{
+					continue;
+				}
+
+				try
+				{
+					values = strData.split("\t", -1);
+
+					int i = 0;
+					int eci = Integer.parseInt(values[i++]);
+					int buildingid = Integer.parseInt(values[i++]);
+					if (eci > 0 && buildingid > 0)
+					{
+						// 20170311 cai的需求一个小区对多个楼宇
+						// if (!cfgindoor.containsKey(eci))
+						// {
+						// cfgindoor.put(eci, buildingid);
+						// }
+						if (!cfgindoor.containsKey(eci))
+						{
+							cfgindoor.put(eci, "#" + String.valueOf(buildingid) + "#");
+						}
+						else
+						{
+							String bid = cfgindoor.get(eci) + "#" + String.valueOf(buildingid) + "#";
+							cfgindoor.remove(eci);
+							cfgindoor.put(eci, bid);
+						}
+
+						if (!cfgbuilds.containsKey(buildingid))
+						{
+							cfgbuilds.put(buildingid, 0);
+						}
+					}
+				}
+				catch (Exception e)
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error, e.getMessage());
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, e.getMessage());
+			return false;
+		}
+		finally
+		{
+			if (reader != null)
+			{
+				try
+				{
+					reader.close();
+				}
+				catch (IOException e)
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error, e.getMessage());
+					e.printStackTrace();
+				}
+			}
+		}
+		LOGHelper.GetLogger().writeLog(LogType.info, "indoor count = " + String.valueOf(cfgindoor.size()));
+		return (cfgindoor.size() > 0);
+	}
+
+	// 20170311 cai的需求一个小区对多个楼宇
+	// public int GetBuildingid(int eci)
+	// {
+	// if (cfgindoor.containsKey(eci))
+	// {
+	// return cfgindoor.get(eci);
+	// }
+	// return -255;
+	// }
+	public String GetBuildingid(int eci)
+	{
+		if (cfgindoor.containsKey(eci))
+		{
+			return cfgindoor.get(eci);
+		}
+		return "#-255#";
+	}
+
+	public static void main(String args[])
+	{
+		CfgInfo test = new CfgInfo();
+		// test.GetCell();
+	}
+
+	private boolean GetCell(Configuration conf)
+	{
+		// select distinct
+		// eci,convert(int,频点),convert(int,PCI),经度,纬度,ENODEBID,case when 覆盖类型 in
+		// ('室分','室内') then 1 else 0 end,convert(int,天线挂高) from TB_工参信息表
+		if (lcconf == null)
+		{
+			try
+			{
+				lcconf = CellConfig.GetInstance();
+				if (!lcconf.loadLteCell(conf))
+				{
+					return false;
+				}
+			}
+			catch (Exception e)
+			{
+				e.printStackTrace();
+				return false;
+			}
+		}
+
+		LOGHelper.GetLogger().writeLog(LogType.info, "cell count = " + String.valueOf(lcconf.getLteCellInfoMap().size()));
+		return (lcconf.getLteCellInfoMap().size() > 0);
+	}
+
+	private boolean GetOut()
+	{
+		cfgout.clear();
+
+		// select eci_indoor,eci_outdoor from TB_工参信息表_室分最近宏站
+		String strPath = MainModel.GetInstance().getAppConfig().getSimuLocConfigPath() + "/tb_cfg_indoor_nearest_macro.txt";
+		LOGHelper.GetLogger().writeLog(LogType.info, strPath);
+
+		BufferedReader reader = null;
+		try
+		{
+			if (!strPath.contains(":"))
+			{
+				// Configuration conf = new Configuration();
+				// // FileSystem.setDefaultUri(conf,
+				// // MainModel.GetInstance().getAppConfig().getFsUri());
+				// DistributedFileSystem hdfs;
+				// try
+				// {
+				// hdfs = (DistributedFileSystem) FileSystem.get(conf);
+				// }
+				// catch (IOException e1)
+				// {
+				// e1.printStackTrace();
+				// return false;
+				// }
+				// LOGHelper.GetLogger().writeLog(LogType.info, strPath);
+				if (!hdfsOper.checkFileExist(strPath))
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error, "config not exists : " + strPath);
+					return false;
+				}
+				reader = new BufferedReader(new InputStreamReader(hdfsOper.getHdfs().open(new Path(strPath)), "UTF-8"));
+			}
+			else
+			{
+				reader = new BufferedReader(new InputStreamReader(new FileInputStream(strPath), "UTF-8"));
+			}
+
+			String strData;
+			String[] values;
+			while ((strData = reader.readLine()) != null)
+			{
+				if (strData.length() == 0)
+				{
+					continue;
+				}
+
+				try
+				{
+					values = strData.split("\t", -1);
+
+					int i = 0;
+					int ieci = Integer.parseInt(values[i++]);
+					int oeci = Integer.parseInt(values[i++]);
+
+					if (ieci > 0 && oeci > 0)
+					{
+						if (!cfgout.containsKey(ieci))
+						{
+							cfgout.put(ieci, oeci);
+						}
+					}
+				}
+				catch (Exception e)
+				{
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			return false;
+		}
+		finally
+		{
+			if (reader != null)
+			{
+				try
+				{
+					reader.close();
+				}
+				catch (IOException e)
+				{
+					e.printStackTrace();
+				}
+			}
+		}
+
+		LOGHelper.GetLogger().writeLog(LogType.info, "macrocell count = " + String.valueOf(cfgout.size()));
+		return (cfgout.size() > 0);
+	}
+
+	public CfgCell GetCell(int eci)
+	{
+		LteCellInfo lci = lcconf.getLteCell((long) eci);
+		if (lci != null)
+		{
+			CfgCell cc = new CfgCell();
+			cc.btsid = lci.enbid;
+			cc.eci = (int) lci.eci;
+			cc.isindoor = lci.indoor;
+			cc.longitude = lci.ilongitude / 10000000.0;
+			cc.latitude = lci.ilatitude / 10000000.0;
+			cc.height = lci.high;
+			return cc;
+		}
+		return null;
+	}
+
+	public int GetCityid(int eci)
+	{
+		return lcconf.getCellCityID(eci);
+	}
+
+	public LteCellInfo GetLCell(int eci)
+	{
+		return lcconf.getLteCell((long) eci);
+	}
+
+	public int GetOut(int eci)
+	{
+		if (cfgout.containsKey(eci))
+		{
+			return cfgout.get(eci);
+		}
+		return 0;
+	}
+
+	public CfgCell GetNCell(int pciearfcn, int seci, double longitude, double latitude, int cityid)
+	{
+		LteCellInfo lci = lcconf.getNearestCell(cityid, pciearfcn & 0x0FFFF, pciearfcn / 65536);
+//		LteCellInfo lci = getNearestCell(seci, (int) (longitude * 10000000), (int) (latitude * 10000000), cityid, pciearfcn & 0x0FFFF, pciearfcn / 65536);
+
+		if (lci != null)
+		{
+			CfgCell cc = new CfgCell();
+			cc.btsid = lci.enbid;
+			cc.eci = (int) lci.eci;
+			cc.isindoor = lci.indoor;
+			cc.longitude = lci.ilongitude / 10000000.0;
+			cc.latitude = lci.ilatitude / 10000000.0;
+			cc.height = lci.high;
+			return cc;
+		}
+		return null;
+	}
+
+//	private LteCellInfo getNearestCell(int seci, int longtitude, int latitude, int cityID, int fcn, int pci)
+//	{
+//		if (longtitude <= 0 || latitude <= 0 || cityID <= 0 || fcn <= 0 || pci <= 0)
+//		{
+//			return null;
+//		}
+//
+//		long fcnPciKey = Long.parseLong(String.format("%02d%05d%03d", cityID, fcn, pci));
+//		List<LteCellInfo> fcnPciList = null;
+//		fcnPciList = lcconf.fcnPciLteCellMap.get(fcnPciKey);
+//		if (fcnPciList == null)
+//		{
+//			return null;
+//		}
+//		int distance = Integer.MAX_VALUE;
+//		int curDistance = 0;
+//		LteCellInfo nearestCell = null;
+//		for (LteCellInfo item : fcnPciList)
+//		{
+//			if (item.eci == seci)
+//			{
+//				continue;
+//			}
+//			curDistance = (int) GetDistance(longtitude, latitude, item.ilongitude, item.ilatitude);
+//			if (curDistance > 3000)
+//			{
+//				continue;
+//			}
+//			if (curDistance < distance)
+//			{
+//				nearestCell = item;
+//				distance = curDistance;
+//			}
+//		}
+//		if (distance >= 6000)
+//		{
+//			return null;
+//		}
+//		return nearestCell;
+//	}
+
+	public static double GetDistance(double lng1, double lat1, double lng2, double lat2)
+	{
+		// 计算y1, y2所在位置的纬度圈长度
+		double dx1 = Math.sin((90.0 - lat1) * 2 * Math.PI / 360.0);
+		double dx2 = Math.sin((90.0 - lat2) * 2 * Math.PI / 360.0);
+
+		double dx = (dx1 + dx2) / 2.0 * (lng1 - lng2) / 360.0 * 40075360;
+		double dy = (lat2 - lat1) / 360.0 * 39940670;
+
+		return (double) (Math.sqrt(dx * dx + dy * dy) + 0.5);
+	}
+
+	private boolean GetNCell()
+	{
+		cfgncell.clear();
+
+		// "select distinct
+		// convert(int,aa.eci),convert(int,aa.neci),convert(int,aa.narfcn),convert(int,aa.npci),bb.ENODEBID,case
+		// when bb.覆盖类型 in ('室分','室内') then 1 else 0 end "
+		// + " ,convert(int,bb.天线挂高),bb.经度,bb.纬度 from TB_工参_邻区 aa,TB_工参信息表 bb
+		// where aa.neci=bb.eci and aa.narfcn=bb.频点 and aa.npci=bb.PCI";
+		String strPath = MainModel.GetInstance().getAppConfig().getSimuLocConfigPath() + "/tb_cfg_nbcell.txt";
+		LOGHelper.GetLogger().writeLog(LogType.info, strPath);
+		boolean isComp = false;
+		InputStream is = null;
+		if (!strPath.contains(":"))
+		{
+			// Configuration conf = new Configuration();
+			// // FileSystem.setDefaultUri(conf,
+			// // MainModel.GetInstance().getAppConfig().getFsUri());
+			// DistributedFileSystem hdfs;
+			try
+			{
+				// hdfs = (DistributedFileSystem) FileSystem.get(conf);
+				if (!hdfsOper.checkFileExist(strPath))
+				{
+					strPath += ".gz";
+					if (!hdfsOper.checkFileExist(strPath))
+					{
+						LOGHelper.GetLogger().writeLog(LogType.error, "config not exists : " + strPath);
+						return true;
+					}
+					isComp = true;
+				}
+				is = hdfsOper.getInputStream(strPath);
+			}
+			catch (Exception e1)
+			{
+				return false;
+			}
+
+		}
+		else
+		{
+			try
+			{
+				is = new FileInputStream(strPath);
+			}
+			catch (FileNotFoundException e)
+			{
+				e.printStackTrace();
+				return false;
+			}
+		}
+		BufferedReader reader = null;
+		try
+		{
+			if (isComp)
+			{
+				reader = new BufferedReader(new InputStreamReader(new GZIPInputStream(is), "UTF-8"));
+			}
+			else
+			{
+				reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+			}
+			String strData;
+			String[] values;
+
+			while ((strData = reader.readLine()) != null)
+			{
+				if (strData.length() == 0)
+				{
+					continue;
+				}
+
+				try
+				{
+					values = strData.split("\t", -1);
+
+					int i = 0;
+
+					int eci = Integer.parseInt(values[i++]);
+					int neci = Integer.parseInt(values[i++]);
+					int earfcn = Integer.parseInt(values[i++]);
+					int pci = Integer.parseInt(values[i++]);
+					CfgCell sam = new CfgCell();
+					sam.btsid = Integer.parseInt(values[i++]);
+					sam.isindoor = Integer.parseInt(values[i++]);
+					sam.eci = neci;
+					sam.height = Integer.parseInt(values[i++]);
+					sam.longitude = Double.parseDouble(values[i++]);
+					sam.latitude = Double.parseDouble(values[i++]);
+
+					String sKey = String.valueOf(eci) + "-" + String.valueOf(pci * 65536 + earfcn);
+
+					if (!cfgncell.containsKey(sKey))
+					{
+						cfgncell.put(sKey, sam);
+					}
+				}
+				catch (Exception e)
+				{
+				}
+			}
+		}
+		catch (Exception ee)
+		{
+			return false;
+		}
+		finally
+		{
+			if (reader != null)
+			{
+				try
+				{
+					reader.close();
+				}
+				catch (IOException e)
+				{
+					e.printStackTrace();
+				}
+			}
+		}
+
+		LOGHelper.GetLogger().writeLog(LogType.info, "ncell count = " + String.valueOf(cfgncell.size()));
+		return true;
+	}
+
+	public CfgCell GetNCell(int eci, int pciearfcn)
+	{
+		String sKey = String.valueOf(eci) + "-" + String.valueOf(pciearfcn);
+
+		if (cfgncell.containsKey(sKey))
+		{
+			return cfgncell.get(sKey);
+		}
+
+		return null;
+	}
+}

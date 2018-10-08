@@ -1,0 +1,89 @@
+package cn.mastercom.bigdata.mapr.xdr.loc;
+
+import java.io.IOException;
+import java.util.Iterator;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.io.Text;
+
+import com.google.protobuf.TextFormat.ParseException;
+
+import cn.mastercom.bigdata.StructData.StaticConfig;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.ResultOutputer;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealReducerV2;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.xdr.loc.ImsiTimeKey;
+import cn.mastercom.bigdata.xdr.loc.XdrLocDeal;
+
+public class XdrLabelFileSeqReducer
+{
+	public static class XdrDataFileReducer extends DataDealReducerV2<ImsiTimeKey, Text, NullWritable, Text>
+	{
+		protected static final Log LOG = LogFactory.getLog(XdrDataFileReducer.class);
+
+		private ResultOutputer resultOutputer;
+		private XdrLocDeal xdrLocDeal;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			super.setup(context);
+			resultOutputer = new ResultOutputer(mos);
+			MainModel.GetInstance().setConf(conf);
+			xdrLocDeal = new XdrLocDeal(resultOutputer);
+		}
+
+		/**
+		 * Called once at the end of the task.
+		 */
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			LOGHelper.GetLogger().writeLog(LogType.info, "total xdr count is :" + xdrLocDeal.totalXdrCount);
+			LOGHelper.GetLogger().writeLog(LogType.info, "format error count is :" + xdrLocDeal.formatErrCount);
+			LOGHelper.GetLogger().writeLog(LogType.info, "error eci count is :" + xdrLocDeal.eciErrCount);
+			LOGHelper.GetLogger().writeLog(LogType.info, "error location count is :" + xdrLocDeal.locErrCount);
+			LOGHelper.GetLogger().writeLog(LogType.info, "error radius count is :" + xdrLocDeal.radiusErrCount);
+			LOGHelper.GetLogger().writeLog(LogType.info, "lte xdr location count is :" + xdrLocDeal.lteXdrLocCount);
+
+			LOGHelper.GetLogger().writeLog(LogType.info, "gps location count is :" + xdrLocDeal.locCount_lll);
+			LOGHelper.GetLogger().writeLog(LogType.info, "lte xdr with gps location count is :" + xdrLocDeal.xdrlocCount_lll);
+
+			LOGHelper.GetLogger().writeLog(LogType.info, "23G eci error location count is :" + xdrLocDeal.eciErrCount_23g);
+			LOGHelper.GetLogger().writeLog(LogType.info, "23G location error count is :" + xdrLocDeal.locErrCount_23g);
+			LOGHelper.GetLogger().writeLog(LogType.info, "23G radius error count is :" + xdrLocDeal.radiusErrCount_23g);
+
+			xdrLocDeal.outAllData();
+			super.cleanup(context);
+		}
+
+		public void reduce(ImsiTimeKey key, Iterable<Text> values, Context context) throws IOException, InterruptedException, ParseException
+		{
+			xdrLocDeal.init(key.getImsi());
+			int pushDataFlag = 0;
+			Iterator<Text> iterator = values.iterator();
+			while (iterator.hasNext())
+			{
+				String value = iterator.next().toString();
+				try
+				{
+					pushDataFlag = xdrLocDeal.pushData(key.getDataType(), value);
+					if (pushDataFlag == StaticConfig.FAILURE)
+					{
+						return;
+					}
+				}
+				catch (Exception e)
+				{
+					LOGHelper.GetLogger().writeLog(LogType.info, "err info ", e);
+				}
+			}
+
+			xdrLocDeal.statData();
+			xdrLocDeal.outData();
+		}
+	}
+}

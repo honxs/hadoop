@@ -1,0 +1,91 @@
+package cn.mastercom.bigdata.mro.stat.tableEnum;
+
+import cn.mastercom.bigdata.project.enums.IOutPutPathEnum;
+
+public enum XdrLocTablesEnum implements IOutPutPathEnum
+{
+	xdrevent("xdrevent","TB_SIGNAL_EVENT_01"),
+	xdrcell("xdrcell","TB_SIGNAL_CELL_01"),
+	xdrcellgrid("xdrcellgrid","TB_SIGNAL_CELLGRID_01"),
+	xdrcellgrid23g("xdrcellgrid23g","TB_23G_SIGNAL_CELLGRID_01"),
+	xdrgrid("xdrgrid","TB_SIGNAL_GRID_01"),
+	xdrgriduserhour("xdrgriduserhour","TB_SIGNAL_GRID_USER_HOUR_01"),
+	xdrgrid23g("xdrgrid23g","TB_23G_SIGNAL_GRID_01"),
+	xdrLocation("xdrLocation","XDR_LOCATION_01"),
+	xdrLocationSelectOut("xdrLocationSelectOut","XDR_LOCATION_SELECTOUT_01"),
+	xdrgriddt("xdrgriddt","TB_DTSIGNAL_GRID_01"),
+	xdrgriddt23g("xdrgriddt23g","TB_23G_DTSIGNAL_GRID_01"),
+	xdrgridcqt("xdrgridcqt","TB_CQTSIGNAL_GRID_01"),
+	xdrgridcqt23g("xdrgridcqt23g","TB_23G_CQTSIGNAL_GRID_01"),
+	xdreventdt("xdreventdt","TB_DTSIGNAL_EVENT_01"),
+	xdreventdt23g("xdreventdt23g","TB_23G_DTSIGNAL_EVENT_01"),
+	xdreventdtex("xdreventdtex","TB_DTEXSIGNAL_EVENT_01"),
+	xdreventdtex23g("xdreventdtex23g","TB_23G_DTEXSIGNAL_EVENT_01"),
+	xdreventcqt("xdreventcqt","TB_CQTSIGNAL_EVENT_01"),
+	xdreventcqt23g("xdreventcqt23g","TB_23G_CQTSIGNAL_EVENT_01"),
+	xdruserinfo("xdruserinfo","TB_SIGNAL_USERINFO_01"),
+	xdruseract("xdruseract","TB_SIG_USER_BEHAVIOR_LOC_CELL_01"),
+	xdreventerr("xdreventerr","TB_ERRSIGNAL_EVENT_01"),
+	xdrevtVap("xdrevtVap","TB_EVT_VAP_01"),
+	xdrhirail("xdrhirail","TB_XDR_HIRAIL_01"),
+	xdrLocSpan("xdrLocSpan","TB_XDR_LOCATION_SPAN_01"),
+	xdrSiChuan("xdrSiChuan","XDR_SICHUAN_DATE_01"),
+	xdrCountStat("xdrCount", "tb_xdr_user_count_yd_dd")
+	// xdrcellhourTime("xdrcellhourTime","tb_mr_user_location_dd")
+	;
+
+	private int index;
+	private String fileName;
+	private String dirName;
+	
+	private XdrLocTablesEnum(String filename, String dirName)
+	{
+		this.fileName = filename;
+		this.dirName = dirName;
+		this.index =XdrLocTablesEnum.class.getName().hashCode() + ordinal();
+	} 
+	
+	@Override
+	public String getPath(String hPath, String outData)
+	{
+		return getBasePath(hPath, outData) + "/" + dirName + "_" + outData;
+	}
+
+	@Override
+	public String getHourPath(String hPath, String outData, String hour) 
+	{
+		if (hour == null) return getPath(hPath, outData);
+		return getHourBasePath(hPath, outData, hour) + "/" + dirName + "_" + outData;
+	}
+
+	@Override
+	public String getFileName()
+	{
+		return fileName;
+	}
+
+	@Override
+	public String getDirName()
+	{
+		return dirName;
+	}
+
+	@Override
+	public int getIndex()
+	{
+		return index;
+	}
+	
+	public static String getBasePath(String hPath, String date)
+	{
+		return hPath + "/xdr_loc/data_01_" + date;
+	}
+
+	
+	public static String getHourBasePath(String hPath, String date, String hour)
+	{
+		if(hour == null) return getBasePath(hPath, date);
+		return hPath + "/xdr_loc/data_01_" + date + "/" + hour;
+	}
+
+}

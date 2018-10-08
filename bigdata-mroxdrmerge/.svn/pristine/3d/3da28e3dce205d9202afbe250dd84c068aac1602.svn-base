@@ -1,0 +1,444 @@
+package cn.mastercom.bigdata.mapr.stat.userAna;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.io.WritableComparator;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Partitioner;
+
+import cn.mastercom.bigdata.util.ResultOutputer;
+import cn.mastercom.bigdata.util.hadoop.hdfs.FileReader;
+import cn.mastercom.bigdata.util.hadoop.hdfs.FileReader.LineHandler;
+import cn.mastercom.bigdata.util.hadoop.mapred.ContextOutputWrapper;
+import cn.mastercom.bigdata.util.hadoop.mapred.ContextOutputWrapper.KeyGenerator;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealMapperV2;
+import cn.mastercom.bigdata.mro.loc.MroXdrDeal;
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.stat.userAna.model.StationImsi;
+import cn.mastercom.bigdata.stat.userAna.model.Xdr_ImsiEciTime;
+import cn.mastercom.bigdata.stat.userAna.hsr.HSRPotentialUserDeal;
+import cn.mastercom.bigdata.stat.userAna.hsr.HSRUserAnaDeal;
+import cn.mastercom.bigdata.stat.userAna.hsr.RailSecImsi;
+import cn.mastercom.bigdata.stat.userAna.subway.SubwayPotentialUserDeal;
+import cn.mastercom.bigdata.stat.userAna.tableEnums.HsrEnums;
+import cn.mastercom.bigdata.stat.userAna.tableEnums.SubwayEnums;
+import cn.mastercom.bigdata.util.FormatTime;
+import cn.mastercom.bigdata.util.IDataDeal;
+
+public class UserAnaMapper
+{
+	/**
+	 * 描述：高铁分析_用户分析_JOB1_MAPPER
+	 * 输入：XDR_LOCATION
+	 * 输出：同一站点一个用户的最早最晚驻留时间统计
+	 * PS：
+	 * 1、测试发现用户不能以唯一的IMSI来标识，一个IMSI存在多个IMEI与之对应，为了区别出高铁用户，使用"IMSI_IMEI"作为唯一标识； 
+	 * 2、兼容高铁/地铁统计，减少数据读取次数。
+	 */
+	public static class XdrlocationMapper extends DataDealMapperV2<Object, Text, PotentialUserAnaKey, Text>
+	{
+		private StationImsi stationImsiTmp = new StationImsi();
+		
+		private HSRPotentialUserDeal hsrPotentialUserDeal;
+		private SubwayPotentialUserDeal subwayPotentialUserDeal;
+		List<IDataDeal> userAnaDeal = new ArrayList<>();
+		
+		@Override
+		protected void setup(Mapper<Object, Text, PotentialUserAnaKey, Text>.Context context) throws IOException,
+				InterruptedException
+		{
+			super.setup(context);
+			MainModel.GetInstance().setConf(conf);
+			
+			if(MainModel.GetInstance().getCompile().Assert(CompileMark.HiRail2)){
+				hsrPotentialUserDeal = new HSRPotentialUserDeal(new ResultOutputer(new ContextOutputWrapper<PotentialUserAnaKey>(context, new KeyGenerator<PotentialUserAnaKey>() {
+					
+					@Override
+					public PotentialUserAnaKey generate(String value) {
+						return new PotentialUserAnaKey(HsrEnums.HSR_TMP_POTENTIAL_USER.getIndex());
+					}
+				})));
+				userAnaDeal.add(hsrPotentialUserDeal);
+			}
+			
+			if(MainModel.GetInstance().getCompile().Assert(CompileMark.Subway)){
+				subwayPotentialUserDeal = new SubwayPotentialUserDeal(new ResultOutputer(new ContextOutputWrapper<PotentialUserAnaKey>(context, new KeyGenerator<PotentialUserAnaKey>() {
+					
+					@Override
+					public PotentialUserAnaKey generate(String value) {
+						return new PotentialUserAnaKey(SubwayEnums.SUBWAY_TMP_POTENTIAL_USER.getIndex());
+					}
+				})));
+				userAnaDeal.add(subwayPotentialUserDeal);
+			}
+		}
+		
+		@Override
+		protected void map(Object key, Text value, Mapper<Object, Text, PotentialUserAnaKey, Text>.Context context)
+				throws IOException, InterruptedException
+		{
+			String[] valstrs = value.toString().split("\t", -1);
+
+			if (valstrs.length < 38)
+			{
+				return;
+			}
+			//解析有用字段
+			String eciStr = valstrs[1].trim();
+			String timeStr = valstrs[3].trim();
+			String imsiStr = valstrs[4].trim();
+			String imeiStr = valstrs[37].trim();
+			/**************test************/
+//			String[] imsiImeiStr = valstrs[0].trim().split("_");
+//			String timeStr = valstrs[1].trim().substring(0, valstrs[1].trim().length()-3);//测试数据 带毫秒
+//			String eciStr = valstrs[2].trim();
+//			String imsiStr = imsiImeiStr[0];
+//			String imeiStr = imsiImeiStr.length > 1 ? imsiImeiStr[1] : "";
+			/**************test************/
+			stationImsiTmp.minTimeEci = Long.parseLong(eciStr);
+			stationImsiTmp.minTime = Integer.parseInt(timeStr) *1000L;
+			stationImsiTmp.imsi = imsiStr + "_" + imeiStr; //拼接imsi + imei作为唯一键
+			stationImsiTmp.maxTimeEci = Long.parseLong(eciStr);
+			stationImsiTmp.maxTime = Integer.parseInt(timeStr) *1000L;
+			
+			if(stationImsiTmp.minTimeEci <= 0 || stationImsiTmp.minTime <= 0 || Long.parseLong(imsiStr) <= 0){
+				return;
+			}
+			for(IDataDeal deal : userAnaDeal){
+				deal.pushData(0, stationImsiTmp.toString());
+			}
+		}
+
+		@Override
+		protected void cleanup(Mapper<Object, Text, PotentialUserAnaKey, Text>.Context context) throws IOException,
+				InterruptedException
+		{
+			for(IDataDeal deal : userAnaDeal){
+				deal.outData();
+			}
+		}
+
+	}
+	
+	/**
+	 * 描述：高铁分析_用户分析_JOB2_MAPPER
+	 * 输入：XDR_LOCATION
+	 * 输出：过滤及精简后的XDR_LOCATION字段
+	 * PS：
+	 * 1、兼容高铁/地铁。
+	 */
+	public static class XdrLocationFilterMapper extends DataDealMapperV2<Object, Text, UserAnaSectionKey, Text>{
+		private UserAnaSectionKey outKey = new UserAnaSectionKey();
+		private Text outValue = new Text();
+		StringBuilder tmsb = new StringBuilder();
+		Map<String, List<ImsiTimeSeg>> hsrImsiToSegInfo = new HashMap<>();
+		Map<String, List<ImsiTimeSeg>> subwayImsiToSegInfo = new HashMap<>();
+		ResultOutputer resultOutputer;
+		Xdr_ImsiEciTime xdr = new Xdr_ImsiEciTime();
+		
+		static boolean test = false; 
+		
+		@Override
+		protected void setup(Mapper<Object, Text, UserAnaSectionKey, Text>.Context context) throws IOException, InterruptedException
+		{
+			super.setup(context);
+			
+			String baseOutputPath = conf.get("mapreduce.job.output.path");
+			String date = conf.get("mapreduce.job.date");
+			
+			if(MainModel.GetInstance().getCompile().Assert(CompileMark.HiRail2)){
+				String fileDir = HsrEnums.HSR_TMP_POTENTIAL_USER.getPath(baseOutputPath, date);
+				initFilterMap(fileDir, hsrImsiToSegInfo);
+			}
+			if(MainModel.GetInstance().getCompile().Assert(CompileMark.Subway)){
+				String fileDir = SubwayEnums.SUBWAY_TMP_POTENTIAL_USER.getPath(baseOutputPath, date);
+				initFilterMap(fileDir, subwayImsiToSegInfo);
+			}
+			System.out.println(new Date() + "--------开始mapper---------");
+			resultOutputer = new ResultOutputer(mos);
+		}
+
+		@Override
+		protected void map(Object key, Text value, Mapper<Object, Text, UserAnaSectionKey, Text>.Context context)
+				throws IOException, InterruptedException
+		{
+			String[] valstrs = value.toString().split("\t", -1);
+
+			if(!fillData(xdr, valstrs)) return;
+			
+			if(xdr.time <= 0 || xdr.eci <= 0){
+				return;
+			}
+			
+			if(MainModel.GetInstance().getCompile().Assert(CompileMark.HiRail2)){
+				filterBySecMap(xdr, hsrImsiToSegInfo, HsrEnums.HSR_TMP_POTENTIAL_USER.getIndex(), context);
+			}
+			if(MainModel.GetInstance().getCompile().Assert(CompileMark.Subway)){
+				filterBySecMap(xdr, subwayImsiToSegInfo, SubwayEnums.SUBWAY_TMP_POTENTIAL_USER.getIndex(), context);
+			}
+		}
+		
+		@Override
+		protected void cleanup(
+				Mapper<Object, Text, UserAnaSectionKey, Text>.Context context)
+				throws IOException, InterruptedException {
+			super.cleanup(context);
+			System.out.println(new Date() + "--------结束mapper---------");
+		}
+
+		private void filterBySecMap(Xdr_ImsiEciTime xdr, Map<String, List<ImsiTimeSeg>> imsiToSegInfo, int dataType, Mapper<Object, Text, UserAnaSectionKey, Text>.Context context) throws IOException, InterruptedException{
+			List<ImsiTimeSeg> imsiTimeSegs = imsiToSegInfo.get(xdr.imsi);
+			
+			if(imsiTimeSegs == null || imsiTimeSegs.isEmpty()){
+				return;
+			}
+			
+			for(ImsiTimeSeg imsiTimeSeg : imsiTimeSegs){
+				
+//				if(xdr.time >= imsiTimeSeg.beginTime && xdr.time <= imsiTimeSeg.endTime){
+				//20180201 修改为使用 minBeginTime和maxEndTime来过滤 xdr，目的是生成更多的定位点
+				if(xdr.time >= imsiTimeSeg.minBeginTime && xdr.time <= imsiTimeSeg.maxEndTime){
+					outKey.setOneToTwo(imsiTimeSeg.oneToTwo);
+					outKey.setSectionId(imsiTimeSeg.sectionId);
+					//取 开始时间  与 结束时间 的平均 来算属于哪个小时
+					outKey.setHourTime(FormatTime.getHour((int)((imsiTimeSeg.beginTime + imsiTimeSeg.endTime)/2/1000)));
+					outKey.setDataType(dataType);
+					outValue.set(xdr.toString());
+					context.write(outKey, outValue);
+					if(MainModel.GetInstance().getCompile().Assert(CompileMark.Debug)){
+						try {
+							resultOutputer.pushData(HsrEnums.HSR_XDR.getIndex(), xdr.toString());
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+					}
+				}
+			}
+		}
+		
+		private boolean fillData(Xdr_ImsiEciTime xdr, String[] valstrs){
+			if(test){
+				return fillTestData(xdr, valstrs);
+			}
+			
+			if (valstrs.length < 38 || xdr == null)
+			{
+				return false;
+			}
+			//解析有用字段
+			String eciStr = valstrs[1].trim();
+			String timeStr = valstrs[3].trim();
+			String imsiStr = valstrs[4].trim();
+			String imeiStr = valstrs[37].trim();
+			
+			xdr.eci = Long.parseLong(eciStr);
+			xdr.time = Long.parseLong(timeStr) * 1000L;
+			xdr.imsi = imsiStr + "_" + imeiStr;
+			
+			return true;
+		}
+		
+		private boolean fillTestData(Xdr_ImsiEciTime xdr, String[] valstrs){
+			String[] imsiImeiStr = valstrs[0].trim().split("_");
+			String timeStr = valstrs[1].trim().substring(0, valstrs[1].trim().length()-3);//测试数据 带毫秒
+			String eciStr = valstrs[2].trim();
+			String imsiStr = imsiImeiStr[0];
+			String imeiStr = imsiImeiStr.length > 1 ? imsiImeiStr[1] : "";
+			
+			xdr.eci = Long.parseLong(eciStr);
+			xdr.time = Long.parseLong(timeStr) * 1000L;
+			xdr.imsi = imsiStr + "_" + imeiStr;
+			return true;
+		}
+		
+		/**
+		 * 初始化过滤器
+		 * @param path
+		 * @param imsiToSegInfo
+		 * @throws InterruptedException
+		 */
+		private void initFilterMap(String path, final Map<String, List<ImsiTimeSeg>>imsiToSegInfo) throws InterruptedException{
+			//格式：sectionId	1/2	imsi	beginTime	endTime	endTimeFixed	speed	imsiOrg
+			try
+			{
+				FileReader.readFiles(conf, path, new LineHandler(){
+
+					@Override
+					public void handle(String line)
+					{
+						String[] strArr = line.split("\t");
+						int sectionId = Integer.parseInt(strArr[0]);
+						int iOneToTwo = Integer.parseInt(strArr[1]);
+						boolean oneToTwo = (iOneToTwo == RailSecImsi.ONE_TO_TWO ? true : false);
+						String imsi = strArr[2];
+						long beginTime = Long.parseLong(strArr[3]);
+						long endTime = Long.parseLong(strArr[4]);
+						String imsiOrg = strArr[7];
+						long minBeginTime = Long.parseLong(strArr[8]);
+						long maxEndTime = Long.parseLong(strArr[9]);
+						
+						List<ImsiTimeSeg> imsiTimeSegs = imsiToSegInfo.get(imsiOrg);
+						if(imsiTimeSegs == null){
+							imsiTimeSegs = new ArrayList<>();
+							imsiToSegInfo.put(imsiOrg, imsiTimeSegs);
+						}
+						imsiTimeSegs.add(new ImsiTimeSeg(imsi, oneToTwo, beginTime, endTime, sectionId, imsiOrg, minBeginTime, maxEndTime));
+					}
+				});
+			}
+			catch (Exception e)
+			{
+				e.printStackTrace();
+				throw new InterruptedException("初始化小区配置异常");
+			}
+		}
+		
+	}
+	/**
+	 * 描述：高铁分析_用户分析_JOB3_MAPPER
+	 * 输入：HSR_XDR
+	 * 输出：
+	 */
+	public static class HSRAreaMapper extends DataDealMapperV2<Object, Text, Text, Text>{
+		
+		//private UserrAreaAnaKey outKey = new UserrAreaAnaKey();
+		private Text outKey = new Text();
+		private Text outValue = new Text();
+
+		
+		@Override
+		protected void setup(Mapper<Object, Text, Text, Text>.Context context) 
+				throws IOException, InterruptedException {
+									
+			super.setup(context);									
+			System.out.println(new Date() + "--------开始mapper---------");
+		}
+
+		@Override
+		protected void map(Object key, Text value, Mapper<Object, Text, Text, Text>.Context context)
+				throws IOException, InterruptedException {
+			String xdrStr = value.toString().trim();
+			String[] xdrline = xdrStr.split("\t", -1);
+//			outKey.setImsi(xdr.imsi);
+//			outKey.setTime(xdr.time);
+			outKey.set( xdrline[0].trim());
+			outValue.set(xdrStr);
+			context.write(outKey, outValue);			
+		}
+		
+		
+		@Override
+		protected void cleanup(
+				Mapper<Object, Text, Text, Text>.Context context)
+				throws IOException, InterruptedException {
+			super.cleanup(context);
+			System.out.println(new Date() + "--------结束mapper---------");
+		}
+	}
+	/**
+	 * 将高铁/地铁的数据分到不同的分区 
+	 */
+	public static class DatatypePartitioner extends Partitioner<PotentialUserAnaKey, Text>{
+
+		@Override
+		public int getPartition(PotentialUserAnaKey key, Text value, int numPartitions)
+		{
+			if(key.getDataType() == HsrEnums.HSR_TMP_POTENTIAL_USER.getIndex()){
+				return 0;
+			}else if(key.getDataType() == SubwayEnums.SUBWAY_TMP_POTENTIAL_USER.getIndex()){
+				return 1;
+			}
+			throw new IllegalArgumentException();
+		}
+	}
+
+	/**
+	 * 180116修改 ： 按1小时分包
+	 *   (小时 + 1) * 区间 (x%2==1 ? 2(x-1) + 1 : 2(x-1))  ...小时[0,23];区间[1,n]
+	 */
+	public static class SectionDatatypePartitioner extends Partitioner<UserAnaSectionKey, Text>{
+
+		@Override
+		public int getPartition(UserAnaSectionKey key, Text value, int numPartitions)
+		{
+			return Math.abs(("" + key.getDataType() + key.getSectionId() + key.isOneToTwo() + HSRUserAnaDeal.hourToDeal(key.getHourTime())).hashCode() % numPartitions);
+//			if(key.getDataType() == HsrEnums.HSR_TMP_POTENTIAL_USER.getIndex()){
+//				return  HSRUserAnaDeal.encode(key.getSectionId(), key.isOneToTwo()) % numPartitions;
+//			}else if(key.getDataType() == SubwayEnums.SUBWAY_TMP_POTENTIAL_USER.getIndex()){
+//				return numPartitions - key.getSectionId();
+//			}
+//			throw new IllegalArgumentException();
+		}
+	}
+
+	public static class SectionGroupComparator extends WritableComparator{
+		public SectionGroupComparator()
+		{
+			super(UserAnaSectionKey.class, true);
+		}
+
+		@SuppressWarnings("rawtypes")
+		@Override
+		public int compare(WritableComparable a, WritableComparable b)
+		{
+			UserAnaSectionKey s1 = (UserAnaSectionKey) a;
+			UserAnaSectionKey s2 = (UserAnaSectionKey) b;
+			
+			int result = Integer.compare(s1.getDataType(), s2.getDataType());
+			if(result == 0){
+				result = Integer.compare(s1.getSectionId(), s2.getSectionId());
+			}
+			if(result == 0){
+				result = Boolean.compare(s1.isOneToTwo(), s2.isOneToTwo());
+			}
+			if(result == 0){//三小时内的数据一块处理
+				result = Integer.compare((s1.getHourTime()/3), (s2.getHourTime()/3));
+			}
+			return result;
+		}
+	}
+	
+	/**
+	 * 辅助类：必要数据封装为实体 
+	 */
+	static class ImsiTimeSeg{
+		
+		public String imsi;
+		
+		public boolean oneToTwo;
+		
+		public long beginTime;
+		
+		public long endTime;
+		
+		public int sectionId;
+		
+		public String imsiOrg;
+		
+		public long minBeginTime;
+		
+		public long maxEndTime;
+
+		public ImsiTimeSeg(String imsi, boolean oneToTwo, long beginTime, long endTime, int sectionId, String imsiOrg, long minBeginTime, long maxEndTime)
+		{
+			super();
+			this.imsi = imsi;
+			this.oneToTwo = oneToTwo;
+			this.beginTime = beginTime;
+			this.endTime = endTime;
+			this.sectionId = sectionId;
+			this.imsiOrg = imsiOrg;
+			this.minBeginTime = minBeginTime;
+			this.maxEndTime = maxEndTime;
+		}
+	}
+	
+}

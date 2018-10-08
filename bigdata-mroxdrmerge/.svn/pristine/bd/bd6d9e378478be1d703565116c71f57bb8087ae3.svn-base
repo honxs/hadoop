@@ -1,0 +1,282 @@
+package cn.mastercom.bigdata.mapr.mro.loc;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.compress.GzipCodec;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.CombineTextInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
+
+import cn.mastercom.bigdata.mapr.mro.loc.MdtDataMapper.MdtImmMapper_HUAWEI;
+import cn.mastercom.bigdata.mapr.mro.loc.MdtDataMapper.MdtImmMapper_ZTE;
+import cn.mastercom.bigdata.mapr.mro.loc.MdtDataMapper.MdtLogMapper_HUAWEI;
+import cn.mastercom.bigdata.mapr.mro.loc.MdtDataMapper.MdtLogMapper_ZTE;
+import cn.mastercom.bigdata.mapr.mro.loc.MroFormatMapperSiChuan.MroMapper_ERICSSON;
+import cn.mastercom.bigdata.mapr.mro.loc.MroFormatMapperSiChuan.MroMapper_HUAWEI_TD;
+import cn.mastercom.bigdata.mapr.mro.loc.MroFormatMapperSiChuan.MroMapper_NSN_TD;
+import cn.mastercom.bigdata.mapr.mro.loc.MroFormatMapperSiChuan.MroMapper_ZTE_TD;
+import cn.mastercom.bigdata.mapr.mro.loc.MroLableFileReducers.MroDataFileReducers;
+import cn.mastercom.bigdata.mapr.mro.loc.MroLableMappers.CellPartitioner;
+import cn.mastercom.bigdata.mapr.mro.loc.MroLableMappers.CellSortKeyComparator;
+import cn.mastercom.bigdata.mapr.mro.loc.MroLableMappers.CellSortKeyGroupComparator;
+import cn.mastercom.bigdata.mapr.mro.loc.MroLableMappers.MroDataMapperByEciTime;
+import cn.mastercom.bigdata.mapr.mro.loc.MroLableMappers.MroDataMappers;
+import cn.mastercom.bigdata.mapr.mro.loc.MroLableMappers.ResidentUserMappers;
+import cn.mastercom.bigdata.mapr.mro.loc.MroLableMappers.XdrLocationMappers;
+import cn.mastercom.bigdata.mapr.util.tools.MapReduceMainTools;
+import cn.mastercom.bigdata.mdt.stat.MdtTableRegister;
+import cn.mastercom.bigdata.mro.loc.CellTimeKey;
+import cn.mastercom.bigdata.mro.stat.register.MroTableRegister_BS;
+import cn.mastercom.bigdata.mro.stat.register.MroTableRegister_CS_FG;
+import cn.mastercom.bigdata.mro.stat.register.MroTableRegister_CS_OTT;
+import cn.mastercom.bigdata.mro.stat.register.MroTableRegister_EVT;
+import cn.mastercom.bigdata.mro.stat.tableEnum.MroCsFgTableEnum;
+import cn.mastercom.bigdata.mro.stat.tableEnum.MroCsOTTTableEnum;
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.stat.userResident.enmus.ResidentConfigTablesEnum;
+import cn.mastercom.bigdata.util.HdfsHelper;
+import cn.mastercom.bigdata.util.hadoop.hdfs.HDFSOper;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealConfigurationV2;
+import cn.mastercom.bigdata.util.hadoop.mapred.MultiOutputMngV2;
+
+public class MroLableFillMains
+{
+	protected static final Log LOG = LogFactory.getLog(MroLableFillMains.class);
+	private static int reduceNum;
+	public static String queueName;
+	public static String inpath_xdr;
+	public static String inpath_mre;
+	public static String inpath_mro;
+	public static String inpath_huaweiMdtimm;
+	public static String inpath_huaweiMdtlog;
+	public static String inpath_zteMdtimm;
+	public static String inpath_zteMdtlog;
+	public static String outpath;
+	public static String outpath_table;
+	public static String outpath_date;
+	public static String inpath_ResidentUser = "";
+	public static String mroXdrMergePath = "";
+
+	private static void makeConfig_home(Job job, String[] args)
+	{// NULL NULL 01_170103 NULL d:/data/mro d:/data/out NULL
+//		String mroXdrMergePath = MainModel.GetInstance().getAppConfig().getMroXdrMergePath();
+		Configuration conf = job.getConfiguration();
+		reduceNum = 10;
+		queueName = args[1];
+		outpath_date = args[2].substring(3);
+		inpath_xdr = args[3];
+		inpath_mro = args[4];
+		mroXdrMergePath = args[5];
+		outpath_table = MroCsOTTTableEnum.getBasePath(mroXdrMergePath, outpath_date);
+		inpath_mre = args[6];
+
+		
+		if (MainModel.GetInstance().getCompile().Assert(CompileMark.ResidentUser))
+		{
+			inpath_ResidentUser = ResidentConfigTablesEnum.User_Resident_Location.getPath(mroXdrMergePath, "");
+		}
+		for (int i = 0; i < args.length; ++i)
+		{
+			LOG.info(i + ": " + args[i] + "\n");
+		}
+		if (args.length >= 13)
+		{
+			inpath_huaweiMdtlog = args[8];
+			inpath_huaweiMdtimm = args[9];
+			inpath_zteMdtlog = args[10];
+			inpath_zteMdtimm = args[11];
+		}
+		// table output path
+		outpath = outpath_table + "/output";
+
+		conf.set("mapreduce.job.date", outpath_date);
+		conf.set("mapreduce.job.oupath", outpath_table);
+		if(!MainModel.GetInstance().getCompile().Assert(CompileMark.Debug))
+		{
+			MapReduceMainTools.CustomMaprParas(conf, queueName);
+			// 初始化自己的配置管理
+			DataDealConfigurationV2.create(outpath_table, job);
+		}
+		
+
+	}
+
+	public static Job CreateJob(String[] args) throws Exception
+	{
+		Configuration conf = new Configuration();
+		if (MainModel.GetInstance().getCompile().Assert(CompileMark.Debug))
+		{
+			conf.set("fs.defaultFS", "hdfs://192.168.1.31:9000");
+		}
+		return CreateJob(conf, args);
+	}
+
+	public static Job CreateJob(Configuration conf, String[] args) throws Exception
+	{
+		if (args.length < 7)
+		{
+			System.err.println("Usage: Mro_loc <queueName> ,<outpath_date>,<inpath_xdr> ,<inpath_mro>,<outpath_table> ,<inpath_mre>");
+			throw (new Exception("MroLableFillMains args input error!"));
+		}
+		Job job = Job.getInstance(conf);
+		makeConfig_home(job, args);
+		String mrFilter = "";
+		String keyWord = "";
+		if (args.length >= 13)
+		{
+			if (!args[7].toUpperCase().equals("NULL") && !args[7].toUpperCase().equals(""))
+			{
+				mrFilter = args[7];
+			}
+			if (!args[12].toUpperCase().equals("NULL") && !args[12].toUpperCase().equals(""))
+			{
+				keyWord = args[12];
+			}
+		}
+
+		HDFSOper hdfsOper = null;
+		if (!inpath_mro.contains(":"))
+		{
+			hdfsOper = new HDFSOper(conf);
+		}
+		job.setJobName("MroXdrMerge.mro.locfillex" + ":" + outpath_date);
+		job.setJarByClass(MroLableFillMains.class);
+		job.setReducerClass(MroDataFileReducers.class);
+		job.setSortComparatorClass(CellSortKeyComparator.class);
+		job.setPartitionerClass(CellPartitioner.class);
+		job.setGroupingComparatorClass(CellSortKeyGroupComparator.class);
+		job.setMapOutputKeyClass(CellTimeKey.class);
+		job.setMapOutputValueClass(Text.class);
+
+		long inputSize = 0;
+
+		if (!inpath_xdr.contains("NULL") && !inpath_xdr.contains(":"))
+		{
+			inputSize += MapReduceMainTools.getFileSize(inpath_xdr, hdfsOper);
+			inputSize += MapReduceMainTools.getFileSize(inpath_mro, hdfsOper, mrFilter, keyWord);
+			inputSize += MapReduceMainTools.getFileSize(inpath_mre, hdfsOper, mrFilter, keyWord);
+			inputSize += MapReduceMainTools.getFileSize(inpath_huaweiMdtimm, hdfsOper, mrFilter, keyWord);
+			inputSize += MapReduceMainTools.getFileSize(inpath_huaweiMdtlog, hdfsOper, mrFilter, keyWord);
+			inputSize += MapReduceMainTools.getFileSize(inpath_zteMdtimm, hdfsOper, mrFilter, keyWord);
+			inputSize += MapReduceMainTools.getFileSize(inpath_zteMdtlog, hdfsOper, mrFilter, keyWord);
+			inputSize += MapReduceMainTools.getFileSize(inpath_ResidentUser, hdfsOper);
+		}
+		reduceNum = MapReduceMainTools.getReduceNum(inputSize, conf);
+
+		job.setNumReduceTasks(reduceNum);
+
+		///////////////////////////////////////////////////////
+		MapReduceMainTools.addInputPath(job, inpath_xdr, hdfsOper, XdrLocationMappers.class);
+		MapReduceMainTools.addInputPath(job, inpath_huaweiMdtlog, hdfsOper, MdtLogMapper_HUAWEI.class);
+		MapReduceMainTools.addInputPath(job, inpath_huaweiMdtimm, hdfsOper, MdtImmMapper_HUAWEI.class);
+		MapReduceMainTools.addInputPath(job, inpath_zteMdtlog, hdfsOper, MdtLogMapper_ZTE.class);
+		MapReduceMainTools.addInputPath(job, inpath_zteMdtimm, hdfsOper, MdtImmMapper_ZTE.class);
+		MapReduceMainTools.addInputPath(job, inpath_ResidentUser, hdfsOper, ResidentUserMappers.class);
+		if (MainModel.GetInstance().getCompile().Assert(CompileMark.LiaoNing) || MainModel.GetInstance().getCompile().Assert(CompileMark.GanSu)
+				|| MainModel.GetInstance().getCompile().Assert(CompileMark.NeiMeng) || MainModel.GetInstance().getCompile().Assert(CompileMark.GuangXi2)
+				|| MainModel.GetInstance().getCompile().Assert(CompileMark.YunNan))
+		{
+			MapReduceMainTools.addInputPath(job, inpath_mro, hdfsOper, MroDataMapperByEciTime.class);
+		}
+		else if (MainModel.GetInstance().getCompile().Assert(CompileMark.SiChuan))
+		{
+			String[] inputMro = inpath_mro.split(",", -1);
+			String ERICSSON_path = inputMro[0];
+			String HUAWEI_path = inputMro[1];
+			String NSN_path = inputMro[2];
+			String ZTE_path = inputMro[3];
+			
+			MapReduceMainTools.addInputPath(job, ERICSSON_path, hdfsOper, MroMapper_ERICSSON.class);
+			MapReduceMainTools.addInputPath(job, HUAWEI_path, hdfsOper, MroMapper_HUAWEI_TD.class);
+			MapReduceMainTools.addInputPath(job, NSN_path, hdfsOper, MroMapper_NSN_TD.class);
+			MapReduceMainTools.addInputPath(job, ZTE_path, hdfsOper, MroMapper_ZTE_TD.class);
+		}
+		/*else if (MainModel.GetInstance().getCompile().Assert(CompileMark.TianJin)) {
+			MapReduceMainTools.addInputPath(job, inpath_mro, hdfsOper, UeMroDatamappers.class);
+		} */
+		else
+		{
+			MapReduceMainTools.addInputPath(job, inpath_mro, hdfsOper, MroDataMappers.class);
+		}
+
+		if ((MainModel.GetInstance().getCompile().Assert(CompileMark.SiChuan) || MainModel.GetInstance().getCompile().Assert(CompileMark.LiaoNing)
+				|| MainModel.GetInstance().getCompile().Assert(CompileMark.GanSu) || MainModel.GetInstance().getCompile().Assert(CompileMark.NeiMeng)
+				|| MainModel.GetInstance().getCompile().Assert(CompileMark.GuangXi2) || MainModel.GetInstance().getCompile().Assert(CompileMark.YunNan))
+				&& (hdfsOper != null && !inpath_mre.contains("NULL") && hdfsOper.checkDirExist(inpath_mre)))
+		{
+			for (String inputMre : inpath_mre.split(",", -1))
+			{
+				MultipleInputs.addInputPath(job, new Path(inputMre), CombineTextInputFormat.class, MroDataMapperByEciTime.class);
+			}
+		}
+		else
+		{
+			MapReduceMainTools.addInputPath(job, inpath_mre, hdfsOper, MroDataMappers.class);
+		}
+
+		//set out put config
+		if (MainModel.GetInstance().getCompile().Assert(CompileMark.NoCsTable)) 
+		{
+			//ptt_stat
+			MultiOutputMngV2.addNamedOutput(job, MroCsOTTTableEnum.mrocell.getIndex(), MroCsOTTTableEnum.mrocell.getFileName(), MroCsOTTTableEnum.mrocell.getPath(mroXdrMergePath, outpath_date), TextOutputFormat.class,
+					NullWritable.class, Text.class);
+			MultiOutputMngV2.addNamedOutput(job, MroCsOTTTableEnum.mrloclib.getIndex(), MroCsOTTTableEnum.mrloclib.getFileName(), MroCsOTTTableEnum.mrloclib.getPath(mroXdrMergePath, outpath_date), TextOutputFormat.class,
+					NullWritable.class, Text.class);
+			MultiOutputMngV2.addNamedOutput(job, MroCsOTTTableEnum.xdrloclib.getIndex(), MroCsOTTTableEnum.xdrloclib.getFileName(), MroCsOTTTableEnum.xdrloclib.getPath(mroXdrMergePath, outpath_date), TextOutputFormat.class,
+					NullWritable.class, Text.class);
+			
+			//fg_stat
+			MultiOutputMngV2.addNamedOutput(job, MroCsFgTableEnum.indoorErr.getIndex(), MroCsFgTableEnum.indoorErr.getFileName(), MroCsFgTableEnum.indoorErr.getPath(mroXdrMergePath, outpath_date), TextOutputFormat.class,
+					NullWritable.class, Text.class);
+			MultiOutputMngV2.addNamedOutput(job, MroCsFgTableEnum.AOATA_PATH.getIndex(), MroCsFgTableEnum.AOATA_PATH.getFileName(), MroCsFgTableEnum.AOATA_PATH.getPath(mroXdrMergePath, outpath_date), TextOutputFormat.class,
+					NullWritable.class, Text.class);
+			
+		} 
+		else 
+		{
+			// ott_stat
+			MroTableRegister_CS_OTT mroTableRegister_CS_OTT = new MroTableRegister_CS_OTT(mroXdrMergePath, outpath_date);
+			mroTableRegister_CS_OTT.registerOutFileName(job);
+			
+			// fg_stat
+			MroTableRegister_CS_FG mroTableRegister_CS_FG = new MroTableRegister_CS_FG(mroXdrMergePath, outpath_date);
+			mroTableRegister_CS_FG.registerOutFileName(job);
+		}
+		// mdt_stat
+		MdtTableRegister mdtTableRegister = new MdtTableRegister(mroXdrMergePath, outpath_date);
+		mdtTableRegister.registerOutFileName(job);						
+		// 20171129 add hsr_stat
+		MroTableRegister_BS mroTableRegister_BS = new MroTableRegister_BS(mroXdrMergePath, outpath_date);
+		mroTableRegister_BS.registerOutFileName(job);
+		// mrevt
+		MroTableRegister_EVT mroTableRegister_EVT = new MroTableRegister_EVT(outpath_table, outpath_date);
+		mroTableRegister_EVT.registerOutFileName(job);
+
+		FileOutputFormat.setOutputPath(job, new Path(outpath));
+
+		String tarPath = "";
+		if (!outpath_table.contains(":"))
+			HdfsHelper.reNameExistsPath(hdfsOper, outpath_table, tarPath);
+
+		if (MainModel.GetInstance().getCompile().Assert(CompileMark.GZip))
+		{
+			FileOutputFormat.setOutputCompressorClass(job, GzipCodec.class);
+		}
+
+		return job;
+	}
+
+	public static void main(String[] args) throws Exception
+	{
+		Job job = CreateJob(args);
+		System.exit(job.waitForCompletion(true) ? 0 : 1);
+	}
+
+}

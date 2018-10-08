@@ -1,0 +1,232 @@
+package cn.mastercom.bigdata.mapr.stat.userAna;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Reducer;
+
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.ResultOutputer;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealReducerV2;
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.stat.userAna.hsr.HSRPotentialUserDeal;
+import cn.mastercom.bigdata.stat.userAna.hsr.HSRUserAnaDeal;
+import cn.mastercom.bigdata.stat.userAna.hsr.SceneRec;
+import cn.mastercom.bigdata.stat.userAna.hsr.SceneRecDeal;
+import cn.mastercom.bigdata.stat.userAna.model.HSRUserXdr;
+import cn.mastercom.bigdata.stat.userAna.subway.SubwayPotentialUserDeal;
+import cn.mastercom.bigdata.stat.userAna.subway.SubwayUserAnaDeal;
+import cn.mastercom.bigdata.stat.userAna.tableEnums.HsrEnums;
+import cn.mastercom.bigdata.stat.userAna.tableEnums.SubwayEnums;
+import cn.mastercom.bigdata.util.IDataDeal;
+
+public class UserAnaReducer
+{
+	/**
+	 * 描述：高铁分析_用户分析_JOB1_REDUCER
+	 * 输入：站点-用户 最早最晚驻留时间
+	 * 输出：高铁潜在用户 {@link HSRPotentialUserDeal}
+	 */
+	public static class PotentialUserReducer extends DataDealReducerV2<PotentialUserAnaKey, Text, NullWritable, Text>{
+		
+		private HSRPotentialUserDeal hsrPotentialUserDeal;
+		private SubwayPotentialUserDeal subwayPotentialUserDeal;
+		Map<Integer, IDataDeal> userAnaDeal = new HashMap<>();
+		private ResultOutputer resultOutputer;
+		
+		@Override
+		protected void setup(Reducer<PotentialUserAnaKey, Text, NullWritable, Text>.Context context) throws IOException,
+				InterruptedException
+		{
+			super.setup(context);
+			MainModel.GetInstance().setConf(conf);
+			
+			resultOutputer = new ResultOutputer(mos);
+			
+			if(MainModel.GetInstance().getCompile().Assert(CompileMark.HiRail2)){
+				hsrPotentialUserDeal = new HSRPotentialUserDeal(resultOutputer);
+				userAnaDeal.put(HsrEnums.HSR_TMP_POTENTIAL_USER.getIndex(), hsrPotentialUserDeal);
+			}
+			if(MainModel.GetInstance().getCompile().Assert(CompileMark.Subway)){
+				subwayPotentialUserDeal = new SubwayPotentialUserDeal(resultOutputer);
+				userAnaDeal.put(SubwayEnums.SUBWAY_TMP_POTENTIAL_USER.getIndex(), subwayPotentialUserDeal);
+			}
+		}
+
+		@Override
+		protected void reduce(PotentialUserAnaKey key, Iterable<Text> values, Context context) throws IOException,
+				InterruptedException
+		{
+			int dataType = key.getDataType();
+			IDataDeal deal = userAnaDeal.get(dataType);
+			//Step 1 : 按站点 +用户 合并所有map端数据
+			for(Iterator<Text> iterator = values.iterator(); iterator.hasNext();){
+				String value = iterator.next().toString();
+				deal.pushData(1, value);
+			}
+			//Step 2 ： 统计
+			deal.statData();
+			
+			deal.outData();
+		}
+
+		@Override
+		protected void cleanup(Reducer<PotentialUserAnaKey, Text, NullWritable, Text>.Context context) throws IOException,
+				InterruptedException
+		{
+			super.cleanup(context);
+			try
+			{
+				resultOutputer.clear();
+			}
+			catch (Exception e)
+			{
+				e.printStackTrace();
+			}
+		}
+		
+	}
+
+	/**
+	 * 描述：高铁分析_用户分析_JOB2_REDUCER 
+	 * 输入：过滤及精简后的XDR_LOCATION字段
+	 * 输出：6个中间表，详见@link HSRUserAnaDeal
+	 * PS:兼容高铁/地铁
+	 */
+	public static class UserConfigReducer extends DataDealReducerV2<UserAnaSectionKey, Text, NullWritable, Text>{
+		
+		Map<Integer, IDataDeal> userAnaDeal = new HashMap<>();
+		private ResultOutputer resultOutputer;
+		HSRUserAnaDeal hsrUserAnaDeal;
+		SubwayUserAnaDeal subwayUserAnaDeal;
+		
+		@Override
+		protected void setup(Reducer<UserAnaSectionKey, Text, NullWritable, Text>.Context context) throws IOException,
+				InterruptedException
+		{
+			super.setup(context);
+			resultOutputer = new ResultOutputer(mos);
+			MainModel.GetInstance().setConf(conf);
+			
+			
+			if(MainModel.GetInstance().getCompile().Assert(CompileMark.HiRail2)){
+				hsrUserAnaDeal = new HSRUserAnaDeal(resultOutputer);
+				userAnaDeal.put(HsrEnums.HSR_TMP_POTENTIAL_USER.getIndex(), hsrUserAnaDeal);
+			}
+			if(MainModel.GetInstance().getCompile().Assert(CompileMark.Subway)){
+				subwayUserAnaDeal = new SubwayUserAnaDeal(resultOutputer);
+				userAnaDeal.put(SubwayEnums.SUBWAY_TMP_POTENTIAL_USER.getIndex(), subwayUserAnaDeal);
+			}
+			System.out.println(new Date() + "--------开始reducer---------");
+		}
+
+		@Override
+		protected void reduce(UserAnaSectionKey key, Iterable<Text> values, Context context) throws IOException,
+				InterruptedException
+		{//同一个区间id, 同一方向的xdr_location
+			
+			int counter = 0;
+			IDataDeal deal = userAnaDeal.get(key.getDataType());
+			try {
+				deal.getClass().getDeclaredMethod("init", int.class, boolean.class, int.class).invoke(deal, key.getSectionId(), key.isOneToTwo(), key.getHourTime());
+			} catch (Exception e) {
+				LOGHelper.GetLogger().writeLog(LogType.error, "业务类初始化失败", e);
+				return;
+			}
+			
+			for(Iterator<Text> iterator = values.iterator(); iterator.hasNext();){
+				String value = iterator.next().toString();
+				deal.pushData(0, value);
+				counter++;
+			}
+			
+			if(counter > 0 ){
+				deal.statData();
+				
+				deal.outData();
+			}
+			
+		}
+
+		@Override
+		protected void cleanup(Reducer<UserAnaSectionKey, Text, NullWritable, Text>.Context context) throws IOException,
+				InterruptedException
+		{
+			super.cleanup(context);
+			System.out.println(new Date() + "--------结束reducer---------");
+			try
+			{
+				resultOutputer.clear();
+			}
+			catch (Exception e)
+			{
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	/**
+	 * 描述：高铁分析_用户场景分析 JOB3_REDUCER 
+	 * 输入：高铁用户xdr
+	 * 输出：用户场景
+	 */
+	public static class UserAreaReducer extends DataDealReducerV2<Text, Text, NullWritable, Text>{
+		private ResultOutputer resultOutputer;
+		SceneRecDeal sceneDeal;
+		SceneRec UserScene ;
+		//Map<String, Set<HSRUserXdr>> imsiXdrMap = new HashMap<String, Set<HSRUserXdr>>();
+		List<HSRUserXdr> imsiXdrList = new ArrayList<HSRUserXdr>();	
+		@Override
+		protected void setup(Reducer<Text, Text, NullWritable, Text>.Context context) throws IOException,
+				InterruptedException {
+			super.setup(context);
+			resultOutputer = new ResultOutputer(mos);
+			MainModel.GetInstance().setConf(conf);
+			
+			sceneDeal = new SceneRecDeal(resultOutputer);
+						
+			System.out.println(new Date() + "--------开始reducer---------");
+		}
+		
+		@Override
+		protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException,
+				InterruptedException{
+			IDataDeal deal = sceneDeal;
+			int counter = 0;
+			Iterator<Text> iterator = values.iterator();
+			while(iterator.hasNext()){
+				String value = iterator.next().toString().trim();
+				//添加相关 的高铁用户的XDR数据
+				deal.pushData(0, value); 
+				counter++;
+			}			
+			if(counter > 0 ){
+				deal.statData();				
+				deal.outData();
+			}		
+		}
+		
+		
+		@Override
+		protected void cleanup(Reducer<Text, Text, NullWritable, Text>.Context context) throws IOException,
+				InterruptedException {
+			super.cleanup(context);
+			System.out.println(new Date() + "--------结束reducer---------");
+			try {
+				resultOutputer.clear();
+			}
+			catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+		
+}

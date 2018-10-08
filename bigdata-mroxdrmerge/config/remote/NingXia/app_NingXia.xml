@@ -1,0 +1,86 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<configuration>
+	<LteCellConfigPath>/mt_wlyh/Data/config/CellInfo/tb_cfg_city_cell.txt</LteCellConfigPath>
+	<MreDataPath>/mt_wlyh/Data/mre/${yyMMdd}</MreDataPath>
+	<MroXdrMergePath>/mt_wlyh/Data/mroxdrmerge</MroXdrMergePath>
+	<MroDataPath>/mt_wlyh/Data/mro</MroDataPath>
+	<MTMroDataPath>/mt_wlyh/Data/mromt/${yyMMdd}</MTMroDataPath>
+	<OrigLocationPath>/flume/location</OrigLocationPath>
+	<PigBinPath>/opt/pig-0.15.0/bin</PigBinPath>
+	<OrigXdrPath>/flume/xdr</OrigXdrPath>
+	<XdrDataPath>/result/test</XdrDataPath>
+	<GsmCellConfigPath>/mt_wlyh/Data/config/tb_cfg_city_cell_gsm.txt
+	</GsmCellConfigPath>
+	<TDCellConfigPath>/mt_wlyh/Data/config/tb_cfg_city_cell_td.txt
+	</TDCellConfigPath>
+	<FigureConfigPath>/mt_wlyh/Data/config/cellfigure</FigureConfigPath>
+	<SimuLocConfigPath>/mt_wlyh/Data/config/cellfigure</SimuLocConfigPath>
+	<specifiedCellPath>/mt_wlyh/Data/config/tb_cfg_city_cell_specified.txt</specifiedCellPath>
+	<!-- reduce 的数量 -->
+	<reduceNmu>1000</reduceNmu>
+	<!--前后扩展场强的范围 -->
+	<range>6</range>
+	<!--栅格中至少至少匹配到的小区数，小于这个数丢弃该栅格 -->
+	<CellNum>1</CellNum>
+	<!-- -经度加减随机数范围 -->
+	<ilongitudRrandomWidth>0.0002</ilongitudRrandomWidth>
+	<!-- -纬度加减随机数范围 -->
+	<ilatitudeRrandomWidth>0.00018</ilatitudeRrandomWidth>
+	<!-- 偏移cqtnum -->
+	<pianyiNum>1</pianyiNum>
+	<!-- cqt、dt 划分比例分界线 -->
+	<percent>0.80</percent>
+	<!-- figureFixFlag 是否用指纹库定位 -->
+	<figureFixFlag>1</figureFixFlag>
+	<!-- 单个reduce分配的核心数 -->
+	<reduceVcore>2</reduceVcore>
+	<!-- lzo库路径 -->
+	<lzoPath>/usr/local/lzo/lib</lzoPath>
+	<!-- map内存大小 兆为单位 -->
+	<mapMemory>6144</mapMemory>
+	<!-- reduce内存大小 兆为单位 -->
+	<reduceMemory>8192</reduceMemory>
+	<cellBuildPath>/mt_wlyh/Data/config/cellBuildConfig</cellBuildPath>
+	<cellBuildWifiPath>/mt_wlyh/Data/config/buildingCellWifi</cellBuildWifiPath>
+	<imeiCapbilityPath>/mt_wlyh/Data/config/imei_learn.txt</imeiCapbilityPath>
+
+	<!-- mdt path -->
+	<huaweiMdtLogDataPath>/seq/MDTLOG-HW/${yyyyMMdd}</huaweiMdtLogDataPath>
+	<huaweiMdtImmDataPath>/seq/MDTIMM-HW/${yyyyMMdd}</huaweiMdtImmDataPath>
+	<zteMdtLogDataPath>/seq/MDTLOG-ZTE/${yyyyMMdd}</zteMdtLogDataPath>
+	<zteMdtImmDataPath>/seq/MDTIMM-ZTE/${yyyyMMdd}</zteMdtImmDataPath>
+	
+	<!-- 写完整路径，时间和前面的MroXdrMerge使用%1$s 时间使用%2$s来表示 -->
+	<httpPath>/seq/news1u_http_cut/20%1$s</httpPath>
+	<mwPath>/A/seq/Mw/20%1$s</mwPath>
+	<svPath>/A/seq/Sv/20%1$s</svPath>
+	<rxPath>/A/seq/Rx/20%1$s</rxPath>
+	<mosPath>/A%1$s/NoSatisUser/data_%2$s/Mgos_%2$s</mosPath>
+	<dhwjtPath>/A%1$s/NoSatisUser/data_%2$s/WJtdh_%2$s</dhwjtPath>
+	<rtpPath></rtpPath>
+	<mgPath></mgPath>
+	<mmePath>/seq/news1mme_cut/20%1$s</mmePath>
+	<imsMoPath>/A/seq/ims_mo/20%1$s</imsMoPath>
+	<imsMtPath>/A/seq/ims_mt/20%1$s</imsMtPath>
+	<quaLityPath>/A/seq/quality/20%1$s</quaLityPath>
+	<UuPath>/seq/Uu/20%1$s</UuPath>
+
+	<!-- 是否输出源数据，加上定位信息  是填写yes,默认为false -->
+	<outXdrData>no</outXdrData>
+	<!-- 是否输出 event统计  是填写yes,默认为false -->
+	<toEventData>yes</toEventData>
+	<outSuccessData>yes</outSuccessData>
+	<outFailData>yes</outFailData>
+	<successProdoceStatusValue>1</successProdoceStatusValue>
+	<dealSizeMap_M>512</dealSizeMap_M>
+	<dealSizeReduce_M>1024</dealSizeReduce_M>
+	<slowReduce>0.99</slowReduce>
+	<failPrecentMap>5</failPrecentMap>
+	<failPrecentReduce>5</failPrecentReduce>
+	
+	<MergeUserResidentDayNum>-30</MergeUserResidentDayNum>
+	<!-- 楼宇楼层室分用户数配置 -->
+	<BuildIndoorCellUserConfigPath>/mt_wlyh/Data/mroxdrmerge/resident_config/tb_cfg_building_indoor_cell</BuildIndoorCellUserConfigPath>
+	<!-- 家宽配置 -->
+	<HomeBroadbandConfigPath>/mt_wlyh/Data/config/homebroadband.txt</HomeBroadbandConfigPath>
+</configuration>

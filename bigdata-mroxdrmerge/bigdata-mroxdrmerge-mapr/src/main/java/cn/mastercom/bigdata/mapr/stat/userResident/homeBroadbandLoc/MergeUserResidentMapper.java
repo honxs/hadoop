@@ -1,0 +1,254 @@
+package cn.mastercom.bigdata.mapr.stat.userResident.homeBroadbandLoc;
+
+import java.io.IOException;
+
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealMapperV2;
+import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.conf.Configurable;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.io.WritableComparator;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Partitioner;
+
+import cn.mastercom.bigdata.stat.userResident.homeBroadbandLoc.MergeUserResidentDeal;
+import cn.mastercom.bigdata.stat.userResident.homeBroadbandLoc.MergeUserResidentKey;
+import cn.mastercom.bigdata.util.hadoop.mapred.CombineSmallFileRecordReader;
+
+public class MergeUserResidentMapper
+{
+
+	public static class UserResidentWorkPlaceMap extends DataDealMapperV2<Object, Text, MergeUserResidentKey, Text>
+	{
+		public MergeUserResidentKey mapkey;
+		public long imsi;
+		public long eci;
+		public int hour;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException {
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+		}
+
+		@Override
+		protected void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{		
+			String[] strs = value.toString().split(",|\t", -1);
+			try
+			{
+				//兼容旧版天表
+				if(strs.length < 20)
+				{
+					String tmpInPath = context.getConfiguration().get(CombineSmallFileRecordReader.CombineSmallFilePath);
+					String dayPathName = tmpInPath.substring(tmpInPath.lastIndexOf("/") + 1, tmpInPath.length());	//tb_mr_user_location_dd_180808
+					String dayName = 20 + dayPathName.substring(dayPathName.lastIndexOf("_") + 1, dayPathName.length());	//20180808
+					
+					String[] vals = value.toString().split(",|\t", 2);
+					String[] newVals = new String[3];
+					newVals[0] = vals[0];
+					newVals[1] = dayName;
+					newVals[2] = vals[1];
+					value.set(StringUtils.join(newVals, "\t"));
+					strs = value.toString().split(",|\t", -1);
+				}
+				
+				if (strs.length < 18)
+				{
+					return;
+				}
+				imsi = Long.parseLong(strs[2]);
+				hour = Integer.parseInt(strs[6]);
+				eci = Long.parseLong(strs[7]);
+			}
+			catch (NumberFormatException e)
+			{
+				return;
+			}
+			
+			if((hour >= 9 && hour <= 11) || (hour >= 14 && hour <= 17))	//工作地点
+			{
+				mapkey = new MergeUserResidentKey(imsi, eci, MergeUserResidentDeal.DATATYPE_RESIDENT_USER_WORKPLACE);
+				context.write(mapkey, value);
+			}
+			if((hour >= 0 && hour <= 5) || (hour >= 20 && hour <= 23))	//家庭地点
+			{
+				mapkey = new MergeUserResidentKey(imsi, eci, MergeUserResidentDeal.DATATYPE_RESIDENT_USER_HOMEPLACE);
+				context.write(mapkey, value);
+			}
+			//临时驻留地点
+			mapkey = new MergeUserResidentKey(imsi, eci, MergeUserResidentDeal.DATATYPE_RESIDENT_USER_TEMPORARYPLACE);
+			context.write(mapkey, value);
+		}
+	}
+	
+	public static class UserResidentHomePlaceMap extends DataDealMapperV2<Object, Text, MergeUserResidentKey, Text>
+	{
+		public MergeUserResidentKey mapkey;
+		public long imsi;
+		public long eci;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException {
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+		}
+
+		@Override
+		protected void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			String[] strs = value.toString().split(",|\t", -1);
+			try
+			{
+				//兼容旧版天表
+				if(strs.length < 20)
+				{
+					String tmpInPath = context.getConfiguration().get(CombineSmallFileRecordReader.CombineSmallFilePath);
+					String dayPathName = tmpInPath.substring(tmpInPath.lastIndexOf("/") + 1, tmpInPath.length());	//tb_mr_user_location_dd_180808
+					String dayName = 20 + dayPathName.substring(dayPathName.lastIndexOf("_") + 1, dayPathName.length());	//20180808
+					
+					String[] vals = value.toString().split(",|\t", 2);
+					String[] newVals = new String[3];
+					newVals[0] = vals[0];
+					newVals[1] = dayName;
+					newVals[2] = vals[1];
+					value.set(StringUtils.join(newVals, "\t"));
+					strs = value.toString().split(",|\t", -1);
+				}
+				
+				if (strs.length < 18)
+				{
+					return;
+				}
+				imsi = Long.parseLong(strs[2]);
+				eci = Long.parseLong(strs[7]);
+			}
+			catch (NumberFormatException e)
+			{
+				return;
+			}
+			//临时驻留地点
+			mapkey = new MergeUserResidentKey(imsi, eci, MergeUserResidentDeal.DATATYPE_RESIDENT_USER_TEMPORARYPLACE);
+			context.write(mapkey, value);
+		}
+	}
+	
+	public static class TempUserResidentMap extends DataDealMapperV2<Object, Text, MergeUserResidentKey, Text>
+	{
+		public MergeUserResidentKey mapkey;
+		public long imsi;
+		public long eci;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException {
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+		}
+
+		@Override
+		protected void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			String[] strs = value.toString().split(",|\t", -1);
+			try
+			{
+				if (strs.length < 18)
+				{
+					return;
+				}
+				imsi = Long.parseLong(strs[1]);
+				eci = Long.parseLong(strs[6]);
+			}
+			catch (NumberFormatException e)
+			{
+				return;
+			}
+			mapkey = new MergeUserResidentKey(imsi, eci, MergeUserResidentDeal.DATATYPE_RESIDENT_USER_OLD);
+			context.write(mapkey, value);
+		}
+	}
+	
+	public static class TempNewUserResidentMap extends DataDealMapperV2<Object, Text, MergeUserResidentKey, Text>
+	{
+		public MergeUserResidentKey mapkey;
+		public long imsi;
+		public long eci;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException {
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+		}
+
+		@Override
+		protected void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			String[] strs = value.toString().split(",|\t", -1);
+			try
+			{
+				if (strs.length < 18)
+				{
+					return;
+				}
+				imsi = Long.parseLong(strs[1]);
+				eci = Long.parseLong(strs[6]);
+			}
+			catch (NumberFormatException e)
+			{
+				return;
+			}
+			
+			mapkey = new MergeUserResidentKey(imsi, eci, MergeUserResidentDeal.DATATYPE_NEW_RESIDENT_USER_OLD);
+			context.write(mapkey, value);
+		}
+	}
+
+	public static class MergeUserResidentPartitioner extends Partitioner<MergeUserResidentKey, Text> implements Configurable
+	{
+		private Configuration conf = null;
+
+		@Override
+		public Configuration getConf()
+		{
+			return conf;
+		}
+
+		@Override
+		public void setConf(Configuration conf)
+		{
+			this.conf = conf;
+		}
+
+		@Override
+		public int getPartition(MergeUserResidentKey key, Text text, int reduceNum)
+		{
+			// TODO Auto-generated method stub
+			return Math.abs(("" + key.getImsi()).hashCode()) % reduceNum;
+		}
+
+	}
+
+	public static class MergeUserResidentSortKeyGroupComparator extends WritableComparator
+	{
+
+		public MergeUserResidentSortKeyGroupComparator()
+		{
+			super(MergeUserResidentKey.class, true);
+		}
+
+		@Override
+		public int compare(WritableComparable a, WritableComparable b)
+		{
+			MergeUserResidentKey s1 = (MergeUserResidentKey) a;
+			MergeUserResidentKey s2 = (MergeUserResidentKey) b;
+
+			if (s1.imsi > s2.imsi)
+			{
+				return 1;
+			}
+			else if (s1.imsi < s2.imsi)
+			{
+				return -1;
+			}
+			return 0;
+		}
+	}
+	
+}

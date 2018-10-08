@@ -1,0 +1,9 @@
+cn\mastercom\bigdata\stat\impl\xdr\TestXdrStatConsumers.class
+cn\mastercom\bigdata\util\IOHelper.class
+cn\mastercom\bigdata\util\FileTypeResult.class
+cn\mastercom\bigdata\stat\impl\xdr\TestXdrStatConsumers$1.class
+cn\mastercom\bigdata\util\FileStore.class
+cn\mastercom\bigdata\stat\impl\mr\TestSampleStatConsumers.class
+cn\mastercom\bigdata\stat\impl\mr\TestSampleStatConsumers$1.class
+cn\mastercom\bigdata\util\FileStore$TestThread.class
+cn\mastercom\bigdata\util\IOHelper$FileNameFilter.class

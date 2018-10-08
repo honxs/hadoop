@@ -1,0 +1,190 @@
+package cn.mastercom.bigdata.conf.config;
+
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.Path;
+
+import cn.mastercom.bigdata.StructData.StaticConfig;
+import cn.mastercom.bigdata.conf.cellconfig.LteCellInfo;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.stat.userResident.buildIndoorCell.BuildIndoorCellUser;
+import cn.mastercom.bigdata.stat.userResident.enmus.BuildIndoorCellTablesEnum;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.hadoop.hdfs.HDFSOper;
+
+public class BuildIndoorCellUserConfig {
+
+	private static BuildIndoorCellUserConfig instance;
+
+	public static BuildIndoorCellUserConfig GetInstance()
+	{
+		if (instance == null)
+		{
+			instance = new BuildIndoorCellUserConfig();
+		}
+		return instance;
+	}
+
+	private BuildIndoorCellUserConfig()
+	{
+		buildIndoorCellUserMap = new HashMap<Long, List<Integer>>();
+	}
+
+	public static void main(String[] args)
+	{
+		BuildIndoorCellUserConfig.GetInstance().loadBuildIndoorCellUser(null, "E:\\mt_wlyh\\test\\BuildIndoorCellUser\\BuildIndoorCellUser.txt");
+		for (Long key : BuildIndoorCellUserConfig.GetInstance().getBuildIndoorCellUserMap().keySet())
+		{
+			System.out.println(key);
+			for (Integer item : BuildIndoorCellUserConfig.GetInstance().getBuildIndoorCellUserMap().get(key))
+			{
+				System.out.println("---" + item);
+			}
+			System.out.println();
+		}
+	}
+
+	private Map<Long, List<Integer>> buildIndoorCellUserMap;
+	public String errLog = "";
+
+	public Map<Long, List<Integer>> getBuildIndoorCellUserMap()
+	{
+		return buildIndoorCellUserMap;
+	}
+
+	public boolean loadBuildIndoorCellUser(Configuration conf)
+	{
+		String filePath = BuildIndoorCellTablesEnum.Build_Indoor_Cell.getPath(MainModel.GetInstance().getAppConfig().getMroXdrMergePath(), "");
+		return loadBuildIndoorCellUser(conf, filePath);
+	}
+
+	public boolean loadBuildIndoorCellUser(Configuration conf, String filePath)
+	{
+		try
+		{
+			BufferedReader reader = null;
+			buildIndoorCellUserMap = new HashMap<Long, List<Integer>>();
+			try
+			{
+				if (!filePath.contains(":"))
+				{
+					HDFSOper hdfsOper = new HDFSOper(conf);
+					if (!hdfsOper.checkFileExist(filePath))
+					{
+						LOGHelper.GetLogger().writeLog(LogType.error, "config is not exists: " + filePath);
+						return false;
+					}
+					FileStatus[] fileArrays = hdfsOper.getHdfs().listStatus(new Path(filePath));
+					for(FileStatus fileStatus: fileArrays)
+					{
+						reader = new BufferedReader(new InputStreamReader(hdfsOper.getHdfs().open(fileStatus.getPath()), "UTF-8"));
+					}
+//					reader = new BufferedReader(new InputStreamReader(hdfsOper.getHdfs().open(new Path(filePath)), "UTF-8"));
+				}
+				else
+				{
+					reader = new BufferedReader(new InputStreamReader(new FileInputStream(filePath), "UTF-8"));
+				}
+				String strData;
+				String[] values;
+				List<Integer> buildIdList = null;
+				while ((strData = reader.readLine()) != null)
+				{
+					try
+					{
+						values = strData.split(",|\t", -1);
+						if (values.length < 6)
+						{
+							LOGHelper.GetLogger().writeLog(LogType.error, "BuildIndoorCellUser config error: " + strData);
+							continue;
+						}
+						BuildIndoorCellUser item = BuildIndoorCellUser.fillData2(values);
+						buildIdList = buildIndoorCellUserMap.get(item.eci);
+						if (buildIdList == null && item.indoorCellUserCnt > 0)
+						{
+							buildIdList = new ArrayList<Integer>();
+							buildIndoorCellUserMap.put(item.eci, buildIdList);
+						}
+						buildIdList.add(item.buildId);
+					}
+					catch (Exception e)
+					{
+						e.printStackTrace();
+						LOGHelper.GetLogger().writeLog(LogType.error, "loadBuildIndoorCellUser error : " + strData, e);
+						errLog = "loadBuildIndoorCellUser error : " + e.getMessage() + ":" + strData;
+						return false;
+					}
+				}
+			}
+			catch (Exception e)
+			{
+				e.printStackTrace();
+				LOGHelper.GetLogger().writeLog(LogType.error, "loadBuildIndoorCellUser error ", e);
+				errLog = "loadBuildIndoorCellUser error : " + e.getMessage();
+				return false;
+			}
+			finally
+			{
+				if (reader != null)
+				{
+					reader.close();
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			e.printStackTrace();
+			LOGHelper.GetLogger().writeLog(LogType.error, "loadBuildIndoorCellUser error ", e);
+			errLog = "loadBuildIndoorCellUser error : " + e.getMessage();
+			return false;
+		}
+
+		return true;
+	}
+	
+	//获取室分小区覆盖哪些楼宇上，取其中一个
+	public int getIndoorCellBuild(LteCellInfo cellInfo, CellBuildInfo cellBuild)
+	{
+		if (cellInfo.indoor != StaticConfig.INCOVER)
+		{
+		   return -1;
+		}
+		
+		List<Integer> buildIdList = buildIndoorCellUserMap.get(cellInfo.eci);
+		if(buildIdList == null)
+		{	
+			buildIdList = new ArrayList<Integer>();
+			buildIndoorCellUserMap.put(cellInfo.eci, buildIdList);
+		}
+		//计算该室分小区落在哪一栋楼宇上
+		List<Integer> indoorCellBuildIdList = cellBuild.getBuildIds(cellInfo.ilongitude, cellInfo.ilatitude);
+		if(indoorCellBuildIdList != null && indoorCellBuildIdList.size() > 0)
+		{
+			buildIdList.addAll(indoorCellBuildIdList);
+		}
+		return buildIdList != null && buildIdList.size() > 0 ? buildIdList.get(0) : -1;
+	}
+	
+	//获取室分小区落在哪一栋楼宇上
+	public int getIndoorCellAtBuild(LteCellInfo cellInfo, CellBuildInfo cellBuild)
+	{
+		if (cellInfo.indoor != StaticConfig.INCOVER)
+		{
+		   return -1;
+		}
+		
+		//计算该室分小区落在哪一栋楼宇上
+		List<Integer> indoorCellBuildIdList = cellBuild.getBuildIds(cellInfo.ilongitude, cellInfo.ilatitude);
+		return indoorCellBuildIdList != null && indoorCellBuildIdList.size() > 0 ? indoorCellBuildIdList.get(0) : -1;
+	}
+
+}

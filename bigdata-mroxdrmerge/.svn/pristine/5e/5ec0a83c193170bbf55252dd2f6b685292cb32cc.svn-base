@@ -1,0 +1,214 @@
+package cn.mastercom.bigdata.stat.userAna.subway;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.hadoop.conf.Configuration;
+
+import cn.mastercom.bigdata.mroxdrmerge.AppConfig;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.stat.userAna.hsr.HSRData;
+import cn.mastercom.bigdata.stat.userAna.hsr.HSRSecTrainData;
+import cn.mastercom.bigdata.stat.userAna.hsr.HSRUserAna;
+import cn.mastercom.bigdata.stat.userAna.hsr.RailSecImsi;
+import cn.mastercom.bigdata.stat.userAna.hsr.HSRSecTrainData.LocPoint;
+import cn.mastercom.bigdata.stat.userAna.hsr.HSRSecTrainData.TimeSpan;
+import cn.mastercom.bigdata.stat.userAna.hsr.HSRSecTrainData.TrainSeg;
+import cn.mastercom.bigdata.stat.userAna.model.ImsiInfoSimple;
+import cn.mastercom.bigdata.stat.userAna.model.Xdr_ImsiEciTime;
+import cn.mastercom.bigdata.stat.userAna.tableEnums.HsrEnums;
+import cn.mastercom.bigdata.util.IDataDeal;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.ResultOutputer;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.hadoop.hdfs.FileReader;
+import cn.mastercom.bigdata.util.hadoop.hdfs.FileReader.LineHandler;
+
+public class SubwayUserAnaDeal implements IDataDeal{
+
+	private static final String OUT_DATA_SEPARATOR = "\t";
+	
+	ResultOutputer resultOutputer; 
+	Configuration conf;
+	
+	int sectionId;
+	HSRUserAna subwayUserAna = new HSRUserAna();
+	HSRData subwayData = new HSRData();
+	
+	public SubwayUserAnaDeal(ResultOutputer resultOutputer){
+		this.resultOutputer = resultOutputer;
+	
+		conf = MainModel.GetInstance().getConf();
+		AppConfig appConfig = MainModel.GetInstance().getAppConfig();
+		subwayUserAna.init(conf, appConfig.getHsrStationPath(), appConfig.getHsrSectionPath(), appConfig.getHsrStationCellPath(), appConfig.getHsrSectionCellPath(), appConfig.getHsrSectionRruPath(), appConfig.getHsrSegmentPath(), appConfig.getHsrIndoorPath());
+	}
+	
+	public void init(int sectionId){
+		this.sectionId = sectionId;
+	}
+	
+	@Override
+	public int pushData(int sectionId, String value) {
+		if(this.sectionId <= 0){
+			init(sectionId);
+		}else if(this.sectionId != sectionId){
+			return -1;
+		}
+		
+		String[] strs = value.split("\t");
+		
+		Xdr_ImsiEciTime xdrLable = new Xdr_ImsiEciTime();
+		xdrLable.imsi = strs[0];
+		xdrLable.time = Long.parseLong(strs[1]);
+		xdrLable.eci = Long.parseLong(strs[2]);
+		
+		subwayData.xdrLocationList.add(xdrLable);
+		return 0;
+	}
+
+	@Override
+	public void statData() {
+		//Step 2: 加载区间用户数据
+		String baseOutputPath = conf.get("mapreduce.job.output.path");
+		String date = conf.get("mapreduce.job.date");
+		String filePath = HsrEnums.HSR_TMP_POTENTIAL_USER.getPath(baseOutputPath, date);
+		RailSecImsi railSegImsi = loadImsiInfoBySeg(filePath, sectionId);	
+		
+		//Step 3： 统计
+		subwayUserAna.statData(railSegImsi, subwayData);
+	}
+
+	@Override
+	public void outData() {
+		for(HSRSecTrainData hsrSecTrainData : subwayData.secTrainDataList){
+			try
+			{
+				StringBuilder sb = new StringBuilder();
+				//Step 4.1: 吐出 <车次信息> 
+				sb.append(hsrSecTrainData.cityID).append(OUT_DATA_SEPARATOR)
+				.append(hsrSecTrainData.trainkey).append(OUT_DATA_SEPARATOR)
+				.append(hsrSecTrainData.sectionid).append(OUT_DATA_SEPARATOR)
+				.append(hsrSecTrainData.trainid).append(OUT_DATA_SEPARATOR)
+				.append(hsrSecTrainData.hourTime).append(OUT_DATA_SEPARATOR)
+				.append(hsrSecTrainData.lstime/1000).append(OUT_DATA_SEPARATOR)
+				.append(hsrSecTrainData.letime/1000).append(OUT_DATA_SEPARATOR)
+				.append(hsrSecTrainData.startStationid).append(OUT_DATA_SEPARATOR)
+				.append(hsrSecTrainData.endStatiionid).append(OUT_DATA_SEPARATOR)
+				.append(hsrSecTrainData.imsiList.size());
+				if(sb.length() > 0)
+					resultOutputer.pushData(HsrEnums.HSR_TRAIN_INFO.getIndex(), sb.toString());
+				
+				sb.delete(0, sb.length());
+				//Step 4.2: 吐出 <车次定位点>
+				for(LocPoint locPoint : hsrSecTrainData.locPointList){
+					sb.append(hsrSecTrainData.trainkey).append(OUT_DATA_SEPARATOR)
+					.append(locPoint.ltime/1000).append(OUT_DATA_SEPARATOR)
+					.append(locPoint.startStationDistance).append("\n");
+				}
+				if(sb.length() > 0)
+					resultOutputer.pushData(HsrEnums.HSR_LOCATION_POINT.getIndex(), sb.substring(0, sb.length()-"\n".length()));
+				
+				sb.delete(0, sb.length());
+				//Step 4.3：吐出 <车次用户Imsi>
+				for(ImsiInfoSimple imsi_imei : hsrSecTrainData.imsiList){
+					sb.append(hsrSecTrainData.trainkey).append(OUT_DATA_SEPARATOR)
+					.append(imsi_imei.imsi.split("_")[0]).append("\n");
+				}
+				if(sb.length() > 0)
+					resultOutputer.pushData(HsrEnums.HSR_IMSI.getIndex(), sb.substring(0, sb.length()-"\n".length()));
+				
+				sb.delete(0, sb.length());
+				//Step 4.4: 吐出 <车次无覆盖时间段>
+				for(TimeSpan timespan : hsrSecTrainData.noCoverTimeSpanList){
+					sb.append(hsrSecTrainData.trainkey).append(OUT_DATA_SEPARATOR)
+					.append(timespan.lstime/1000).append(OUT_DATA_SEPARATOR)
+					.append(timespan.letime/1000).append("\n");
+				}
+				if(sb.length() > 0)
+					resultOutputer.pushData(HsrEnums.HSR_NOVER_TIME.getIndex(), sb.substring(0, sb.length()-"\n".length()));
+				
+				sb.delete(0, sb.length());
+				//Step 5：吐出<车次路段信息>
+				for(TrainSeg trainSeg : hsrSecTrainData.segList){
+					sb.append(hsrSecTrainData.cityID).append(OUT_DATA_SEPARATOR)
+					.append(hsrSecTrainData.trainkey).append(OUT_DATA_SEPARATOR)
+					.append(hsrSecTrainData.sectionid).append(OUT_DATA_SEPARATOR)
+					.append(trainSeg.segId).append(OUT_DATA_SEPARATOR)
+					.append(trainSeg.stime / 1000).append(OUT_DATA_SEPARATOR)
+					.append((trainSeg.stime + trainSeg._t) /1000).append(OUT_DATA_SEPARATOR)
+					.append((float)trainSeg.avgSpeed)
+					.append("\n");
+				}
+				if(sb.length() > 0)
+					resultOutputer.pushData(HsrEnums.HSR_SEG_INFO.getIndex(), sb.substring(0, sb.length()-"\n".length()));
+				
+				sb.delete(0, sb.length());
+				
+				//Step 6：吐出<车次无覆盖路段>
+				for(Integer segId : hsrSecTrainData.noCoverSegIdList){
+					sb.append(hsrSecTrainData.cityID).append(OUT_DATA_SEPARATOR)
+					.append(hsrSecTrainData.trainkey).append(OUT_DATA_SEPARATOR)
+					.append(hsrSecTrainData.sectionid).append(OUT_DATA_SEPARATOR)
+					.append(segId).append("\n");;
+				}
+				if(sb.length() > 0)
+					resultOutputer.pushData(HsrEnums.HSR_SEG_NOCOVER.getIndex(), sb.substring(0, sb.length()-"\n".length()));
+				
+				sb.delete(0, sb.length());
+			
+			}
+			catch (Exception e)
+			{
+				e.printStackTrace();
+
+				LOGHelper.GetLogger().writeLog(LogType.error, "HSR DATA OUTPUT ERROR ", e);
+			}
+		}
+		
+	}
+	
+	private RailSecImsi loadImsiInfoBySeg(String path, final int sectionId){
+		final Map<String, ImsiInfoSimple> imsiInfoSimpleMap1 = new HashMap<>();
+		final Map<String, ImsiInfoSimple> imsiInfoSimpleMap2 = new HashMap<>();
+		try
+		{
+			FileReader.readFiles(conf, path, new LineHandler(){
+				//格式：sectionId	1/2	imsi	beginTime	endTime	endTimeFixed	speed
+				@Override
+				public void handle(String line)
+				{
+					String[] strArr = line.split("\t");
+					int sectionID = Integer.parseInt(strArr[0]);
+					if(sectionId != sectionID){
+						return;
+					}
+					int oneToTwo = Integer.parseInt(strArr[1]);
+					String imsi = strArr[2];
+					long beginTime = Long.parseLong(strArr[3]);
+					long endTime = Long.parseLong(strArr[4]);
+					long endTimeFixed = Long.parseLong(strArr[5]);
+					double speed = Double.parseDouble(strArr[6]);
+					String imsiOrg = strArr[7];
+					long minBeginTime = Long.parseLong(strArr[8]);
+					long maxEndTime = Long.parseLong(strArr[9]);
+					
+					ImsiInfoSimple imImsiInfoSimple = new ImsiInfoSimple(imsi, beginTime, endTime, endTimeFixed, speed, imsiOrg, minBeginTime, maxEndTime);
+					
+					if(oneToTwo == RailSecImsi.ONE_TO_TWO){
+						imsiInfoSimpleMap1.put(imsi, imImsiInfoSimple);
+					}else if(oneToTwo == RailSecImsi.TWO_TO_ONE){
+						imsiInfoSimpleMap2.put(imsi, imImsiInfoSimple);
+					}
+				}
+			});
+		}
+		catch (Exception e)
+		{
+			e.printStackTrace();
+			throw new RuntimeException("初始化高铁疑似用户异常");
+		}
+		RailSecImsi railSegImsi = new RailSecImsi(sectionId, imsiInfoSimpleMap1, imsiInfoSimpleMap2);
+		return railSegImsi;
+	}
+
+}

@@ -1,0 +1,135 @@
+package cn.mastercom.bigdata.xdr.loc;
+
+import cn.mastercom.bigdata.util.DataGeter;
+import cn.mastercom.bigdata.util.IWriteLogCallBack;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.StringUtil;
+
+public class LocationItem
+{
+	public long imsi;
+	public int itime;
+	public int itimeMS;
+	public int locTime;
+	public int locTimeMS;
+	public int eci;
+	public String userIP = "";
+	public int port;
+	public String serverIP = "";
+	public int location;
+	public int location2;
+	public String loctp = "";
+	public int radius;
+	public int longitude;
+	public int latitude;
+	public String wifiName = "";
+	public String msisdn;
+
+	public long tmTime = 0;
+	public static final String spliter = "\t";
+
+	public boolean FillData(String[] vals, int startPos)
+	{
+		int i = startPos;
+
+		try
+		{
+			String imsiStr = DataGeter.GetString(vals[i++], "");
+			if (StringUtil.isNum(imsiStr)) {
+				imsi = Long.parseLong(imsiStr);
+			}
+			tmTime = DataGeter.GetLong(vals[i++], 0);
+			if((tmTime + "").length() == 13)
+			{
+				itime = (int) (tmTime / 1000L);
+				itimeMS = (int) (tmTime % 1000L);
+			}
+			else
+			{
+				itime = (int) tmTime;
+				itimeMS = 0;
+			}
+
+			tmTime = DataGeter.GetLong(vals[i++], 0);
+			if((tmTime + "").length() == 13)
+			{
+				locTime = (int) (tmTime / 1000L);
+				locTimeMS = (int) (tmTime % 1000L);
+			}
+			else
+			{
+				locTime = (int) tmTime;
+				locTimeMS = 0;
+			}
+		}
+		catch (Exception e)
+		{
+			LOGHelper.GetLogger().writeLog(IWriteLogCallBack.LogType.error,"xdrloc LocationItem.FillData error",
+					"xdrloc LocationItem.FillData error",	e);
+		}
+
+		eci = DataGeter.GetInt(vals[i++]);
+		userIP = vals[i++];
+		port = DataGeter.GetInt(vals[i++], 0);
+		serverIP = vals[i++];
+		location = DataGeter.GetInt(vals[i++], 0);
+		loctp = vals[i++];
+		radius = (int) (DataGeter.GetDouble(vals[i++], -1));
+		longitude = (int) (DataGeter.GetDouble(vals[i++], 0) * 10000000);
+		latitude = (int) (DataGeter.GetDouble(vals[i++], 0) * 10000000);
+		i++;//location bak
+		if(i <= vals.length-1)
+		{
+			wifiName = vals[i++];
+		}
+
+		// 格式化数据
+		if (loctp.equals("lll"))
+		{
+			loctp = "ll";
+		}
+
+		if (itime == 0)
+		{
+			itime = locTime;
+		}
+
+		return true;
+	}
+
+	@Override
+	public String toString()
+	{
+		StringBuffer sb = new StringBuffer();
+		sb.delete(0, sb.length());
+		sb.append(imsi);
+		sb.append(spliter);
+		sb.append(itime);
+		sb.append(spliter);
+		sb.append(itimeMS);
+		sb.append(spliter);
+		sb.append(eci);
+		sb.append(spliter);
+		sb.append(userIP);
+		sb.append(spliter);
+		sb.append(port);
+		sb.append(spliter);
+		sb.append(serverIP);
+		sb.append(spliter);
+		sb.append(location);
+		sb.append(spliter);
+		sb.append(loctp);
+		sb.append(spliter);
+		sb.append(radius);
+		sb.append(spliter);
+		sb.append(longitude);
+		sb.append(spliter);
+		sb.append(latitude);
+		sb.append(spliter);
+		sb.append(location2);
+		sb.append(spliter);
+		sb.append(wifiName);
+		
+		return sb.toString();
+	}
+}

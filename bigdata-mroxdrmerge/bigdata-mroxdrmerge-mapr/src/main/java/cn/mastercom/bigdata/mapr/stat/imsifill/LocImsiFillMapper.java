@@ -1,0 +1,285 @@
+package cn.mastercom.bigdata.mapr.stat.imsifill;
+
+import java.io.IOException;
+import java.util.Date;
+
+import org.apache.hadoop.conf.Configurable;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.WritableComparator;
+import org.apache.hadoop.mapreduce.Partitioner;
+
+import cn.mastercom.bigdata.StructData.StaticConfig;
+import cn.mastercom.bigdata.util.DataAdapterReader;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.DataAdapterConf.ParseItem;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealMapperV2;
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.stat.imsifill.deal.ImsiIPKey;
+
+public class LocImsiFillMapper
+{
+	public static class LocationMapper extends DataDealMapperV2<Object, Text, ImsiIPKey, Text>
+	{
+        private String  userIP = "";
+        private int port;
+        private String serverIP = "";
+        
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+		}
+        
+		/**
+		 * Called once at the end of the task.
+		 */
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			super.cleanup(context);
+		}
+
+		@Override
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{			
+            String[] valstrs = value.toString().split("\\|", 10);
+			      
+			try
+			{
+	            userIP = valstrs[4];
+	            port = Integer.parseInt(valstrs[5]);
+	            serverIP = valstrs[6];
+	            
+	            /*if(port==80)
+	            {
+	            	serverIP = valstrs[4];
+		            userIP = valstrs[6];	            	
+	            }*/
+			}
+			catch (Exception e)
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error,"LocImsiFillMapper.map data error", "LocImsiFillMapper.map data error : " + value.toString(),
+						e);
+				return;
+			}
+
+			ImsiIPKey keyItem = new ImsiIPKey(userIP, port, serverIP, 2);
+			context.write(keyItem, value);
+		}
+
+	}
+	
+	public static class ImsiIPMapper extends DataDealMapperV2<Object, Text, ImsiIPKey, Text>
+	{
+        private String userIP = "";//2015-11-01 00:02:43.000
+        private String serverIP = "";
+        
+        private String xmString = "";
+		private StringBuffer sb = new StringBuffer();
+		private String[] valstrs;
+		private long imsi;
+		private int userPort;
+		private String host;
+		private Date dateTime;
+		private Text curText = new Text();
+		private Text curTextKey = new Text();
+
+		private ParseItem parseItem;
+		private DataAdapterReader dataAdapterReader;
+		private int splitMax = -1;
+        
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+			parseItem = MainModel.GetInstance().getDataAdapterConfig().getParseItem("S1-HTTP");
+			if (parseItem == null)
+			{
+				throw new IOException("parse item do not get.");
+			}
+			dataAdapterReader = new DataAdapterReader(parseItem);
+
+			splitMax = parseItem.getSplitMax(
+					"IMSI,User_IP_IPv4,User_Port,App_Server_IP_IPv4,HOST,Procedure_Start_Time,URI,HTTP_content_type,Cell_ID");
+			if (splitMax < 0)
+			{
+				throw new IOException("time or imsi pos not right.");
+			}
+		}
+        
+		/**
+		 * Called once at the end of the task.
+		 */
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			super.cleanup(context);
+		}
+
+		@Override
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{						
+			xmString = new String(value.toString().getBytes(StaticConfig.UTFCode));
+			valstrs = xmString.toString().split(parseItem.getSplitMark(), splitMax + 2);
+
+			try
+			{
+				dataAdapterReader.readData(valstrs);
+				imsi = dataAdapterReader.GetLongValue("IMSI", -1);
+				userIP = dataAdapterReader.GetStrValue("User_IP_IPv4", "");
+				userPort = dataAdapterReader.GetIntValue("User_Port", -1);
+				serverIP = dataAdapterReader.GetStrValue("App_Server_IP_IPv4", "");
+				host = dataAdapterReader.GetStrValue("HOST", "");
+				dateTime = dataAdapterReader.GetDateValue("Procedure_Start_Time", new Date(1970, 1, 1));
+				int eci = dataAdapterReader.GetIntValue("Cell_ID", -1);
+
+				if (imsi <= 0)
+				{
+					return;
+				}
+
+				try
+				{
+					curTextKey.set("");
+
+					sb.delete(0, sb.length());
+					sb.append("\t");
+					sb.append(imsi);
+					sb.append("\t");
+					sb.append(userIP);
+					sb.append("\t");
+					sb.append(userPort);
+					sb.append("\t");
+					sb.append(serverIP);
+					sb.append("\t");
+					sb.append(dateTime.getTime() / 1000L);
+					sb.append("\t");
+					sb.append(eci);
+					
+					curText.set(sb.toString());
+					
+					ImsiIPKey keyItem = new ImsiIPKey(userIP, userPort, serverIP, 1);
+					context.write(keyItem, curText);
+				}
+				catch (Exception e)
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error,"LocImsiFillMapper.format error", "LocImsiFillMapper.format error：" + xmString, e);
+				}				
+			}
+			catch (Exception e)
+			{
+				if (MainModel.GetInstance().getCompile().Assert(CompileMark.Debug))
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error,"LocImsiFillMapper.format error", "LocImsiFillMapper.format error：" + xmString, e);
+				}
+			}
+		}
+
+	}
+	
+	public static class ImsiIPPartitioner extends Partitioner<ImsiIPKey, Text> implements Configurable
+	{
+		private Configuration conf = null;
+
+		@Override
+		public Configuration getConf()
+		{
+			return conf;
+		}
+
+		@Override
+		public void setConf(Configuration conf)
+		{
+			this.conf = conf;
+		}
+
+		@Override
+		public int getPartition(ImsiIPKey key, Text value, int numOfReducer)
+		{
+			return Math.abs(("" + key.getUserIP() + "_" + key.getUserPort() + "_" + key.getServerIP()).hashCode()) % numOfReducer;
+		}
+
+	}
+
+	public static class ImsiIPKeyComparator extends WritableComparator
+	{
+		public ImsiIPKeyComparator()
+		{
+			super(ImsiIPKey.class, true);
+		}
+
+		@Override
+		public int compare(Object a, Object b)
+		{
+			ImsiIPKey s1 = (ImsiIPKey) a;
+			ImsiIPKey s2 = (ImsiIPKey) b;
+			return s1.compareTo(s2);
+		}
+
+	}
+
+	public static class ImsiIPKeyGroupComparator extends WritableComparator
+	{
+
+		public ImsiIPKeyGroupComparator()
+		{
+			super(ImsiIPKey.class, true);
+		}
+
+		@Override
+		public int compare(Object a, Object b)
+		{
+			ImsiIPKey s1 = (ImsiIPKey) a;
+			ImsiIPKey s2 = (ImsiIPKey) b;
+			
+			if (s1.getUserIP().compareTo(s2.getUserIP()) > 0)
+			{
+				return 1;
+			}
+			else if (s1.getUserIP().compareTo(s2.getUserIP()) < 0)
+			{
+				return -1;
+			}
+			else
+			{
+				if (s1.getUserPort() > s2.getUserPort())
+				{
+					return 1;
+				}
+				else if (s1.getUserPort() < s2.getUserPort())
+				{
+					return -1;
+				}
+				else
+				{
+					if (s1.getServerIP().compareTo(s2.getServerIP()) > 0)
+					{
+						return 1;
+					}
+					else if (s1.getServerIP().compareTo(s2.getServerIP()) < 0)
+					{
+						return -1;
+					}
+					else 
+					{
+						if(s1.getDataType() > s2.getDataType())
+						{
+							return 1;
+						}
+						else if(s1.getDataType() < s2.getDataType())
+						{
+							return -1;
+						}
+						return 0;
+					}
+				}
+
+			}
+
+		}
+
+	}
+	
+}

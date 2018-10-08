@@ -1,0 +1,1164 @@
+package cn.mastercom.bigdata.mapr.stat.villagestat;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import cn.mastercom.bigdata.util.DataAdapterReader;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.DataAdapterConf.ParseItem;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.stat.village.MroVillageDeal;
+import org.apache.hadoop.conf.Configurable;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.io.WritableComparator;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Partitioner;
+import cn.mastercom.bigdata.conf.cellconfig.CellConfig;
+import cn.mastercom.bigdata.conf.cellconfig.LteCellInfo;
+import cn.mastercom.bigdata.StructData.*;
+import cn.mastercom.bigdata.util.Func;
+import cn.mastercom.bigdata.util.MrLocation;
+import cn.mastercom.bigdata.util.MrLocationItem;
+
+public class VillageStatMapper
+{
+	public static class VillageGridMapper extends Mapper<Object, Text, GridTypeKey, Text>
+	{
+		private int tllong = 0;
+		private int tllat = 0;
+		private String xmString = "";
+
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			xmString = new String(value.toString().getBytes(StaticConfig.UTFCode));
+			String[] valstrs = xmString.split("\t", -1);
+
+			if (valstrs.length < 3)
+			{
+				return;
+			}
+
+			try
+			{
+				tllong = Integer.parseInt(valstrs[0]);
+				tllat = Integer.parseInt(valstrs[1]);
+			}
+			catch (Exception e)
+			{
+				// TODO: handle exception
+			}
+
+			GridTypeKey gridTypeKey = new GridTypeKey(tllong, tllat, MroVillageDeal.DataType_VillageGrid);
+			context.write(gridTypeKey, value);
+		}
+
+	}
+	
+	public static class MroDataMapper extends Mapper<Object, Text, GridTypeKey, Text>
+	{
+		private ParseItem parseItem;
+		private Text resultValue = new Text();
+		private DataAdapterReader dataAdapterReader_MROSRC;
+		private SIGNAL_MR_All mrResult;
+		private HashMap<String, NC_LTE> ncLteMap;
+		private HashMap<String, NC_GSM> ncGsmMap;
+		private HashMap<String, NC_TDS> ncTdsMap;
+		private LteCellInfo lteCell;
+		private MrLocationItem location;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			Configuration conf = context.getConfiguration();
+			if (!CellConfig.GetInstance().loadLteCell(conf))
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error, "ltecell init error 请检查！");
+				throw (new IOException("ltecell init error 请检查！"));
+			}
+			parseItem = MainModel.GetInstance().getDataAdapterConfig().getParseItem("MRO-SRC");
+			if (parseItem == null)
+			{
+				throw new IOException("parse item do not get.");
+			}
+			ncLteMap = new HashMap<String, NC_LTE>();
+			ncGsmMap = new HashMap<String, NC_GSM>();
+			ncTdsMap = new HashMap<String, NC_TDS>();
+
+			mrResult = new SIGNAL_MR_All();
+			mrResult.Clear();
+			dataAdapterReader_MROSRC = new DataAdapterReader(parseItem);
+			// 按小区列表过滤
+		}
+
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			if (mrResult.tsc.MmeUeS1apId > 0)
+			{
+				OutputOneMr(ncLteMap, ncGsmMap, ncTdsMap, mrResult, context);
+			}
+			super.cleanup(context);
+		}
+
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			boolean fillResult = true;
+			String[] strs = null;
+			strs = value.toString().split(parseItem.getSplitMark(), -1);
+			MroOrigDataMT item = new MroOrigDataMT();
+			try
+			{
+				dataAdapterReader_MROSRC.readData(strs);
+				fillResult = item.FillData(dataAdapterReader_MROSRC);
+				long eci = item.ENBId * 256L + item.CellId;
+				if (eci < 0) {
+					return;
+				}
+				lteCell = CellConfig.GetInstance().getLteCell(eci);
+				if (lteCell == null) {
+					return;
+				}
+			}
+			catch (Exception e)
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error, "MroOrigDataMT error ", e);
+				// continue;
+			}
+			if (!fillResult)
+			{
+				// continue;
+			}
+			int Weight = getValidValueInt(mrResult.tsc.Weight, item.Weight);
+
+			if (Weight == 1 && mrResult.tsc.MmeUeS1apId > 0)
+			{
+				OutputOneMr(ncLteMap, ncGsmMap, ncTdsMap, mrResult, context);
+			}
+
+			try
+			{
+				mrResult.tsc.beginTime = (int) (item.beginTime.getTime() / 1000L);
+				mrResult.tsc.beginTimems = (int) (item.beginTime.getTime() % 1000L);
+			}
+			catch (Exception e)
+			{
+				mrResult.tsc.beginTime = 0;
+				mrResult.tsc.beginTimems = 0;
+				// continue;
+			}
+
+			mrResult.tsc.Weight = Weight;
+			mrResult.tsc.IMSI = 0;
+			mrResult.tsc.TAC = 0;
+			mrResult.tsc.ENBId = getValidValueInt(mrResult.tsc.ENBId, item.ENBId);
+			mrResult.tsc.Earfcn = getValidValueInt(mrResult.tsc.Earfcn, item.LteScEarfcn);
+			if (Weight == 1 && mrResult.tsc.MmeUeS1apId <= 0)
+			{
+				mrResult.tsc.MmeUeS1apId = getValidValueLong(mrResult.tsc.MmeUeS1apId, item.MmeUeS1apId);
+				mrResult.tsc.EventType = getValidValueString(mrResult.tsc.EventType, item.EventType);
+				mrResult.tsc.LteScRSRP = getValidValueInt(mrResult.tsc.LteScRSRP, item.LteScRSRP);
+				mrResult.tsc.LteScRSRQ = getValidValueInt(mrResult.tsc.LteScRSRQ, item.LteScRSRQ);
+				mrResult.tsc.LteScEarfcn = getValidValueInt(mrResult.tsc.LteScEarfcn, item.LteScEarfcn);
+				mrResult.tsc.LteScPci = getValidValueInt(mrResult.tsc.LteScPci, item.LteScPci);
+				mrResult.tsc.LteScBSR = getValidValueInt(mrResult.tsc.LteScBSR, item.LteScBSR);
+				mrResult.tsc.LteScRTTD = getValidValueInt(mrResult.tsc.LteScRTTD, item.LteScRTTD);
+				mrResult.tsc.LteScTadv = getValidValueInt(mrResult.tsc.LteScTadv, item.LteScTadv);
+				mrResult.tsc.LteScAOA = getValidValueInt(mrResult.tsc.LteScAOA, item.LteScAOA);
+				mrResult.tsc.LteScPHR = getValidValueInt(mrResult.tsc.LteScPHR, item.LteScPHR);
+				mrResult.tsc.LteScSinrUL = getValidValueInt(mrResult.tsc.LteScSinrUL, item.LteScSinrUL);
+				mrResult.tsc.LteScRIP = getValidValueDouble(mrResult.tsc.LteScRIP, item.LteScRIP);
+
+//				for (int i = 0; i < mrResult.tsc.LteScPlrULQci.length; ++i)
+//				{
+//					mrResult.tsc.LteScPlrULQci[i] = getValidValueInt(mrResult.tsc.LteScPlrULQci[i], item.LteScPlrULQci[i]);
+//				}
+//
+//				for (int i = 0; i < mrResult.tsc.LteScPlrDLQci.length; ++i)
+//				{
+//					mrResult.tsc.LteScPlrDLQci[i] = getValidValueInt(mrResult.tsc.LteScPlrDLQci[i], item.LteScPlrDLQci[i]);
+//				}
+
+				mrResult.tsc.LteScRI1 = getValidValueInt(mrResult.tsc.LteScRI1, item.LteScRI1);
+				mrResult.tsc.LteScRI2 = getValidValueInt(mrResult.tsc.LteScRI2, item.LteScRI2);
+				mrResult.tsc.LteScRI4 = getValidValueInt(mrResult.tsc.LteScRI4, item.LteScRI4);
+				mrResult.tsc.LteScRI8 = getValidValueInt(mrResult.tsc.LteScRI8, item.LteScRI8);
+				mrResult.tsc.LteScPUSCHPRBNum = getValidValueInt(mrResult.tsc.LteScPUSCHPRBNum, item.LteScPUSCHPRBNum);
+				mrResult.tsc.LteScPDSCHPRBNum = getValidValueInt(mrResult.tsc.LteScPDSCHPRBNum, item.LteScPDSCHPRBNum);
+				mrResult.tsc.LteSceNBRxTxTimeDiff = getValidValueInt(mrResult.tsc.LteSceNBRxTxTimeDiff, item.LteSceNBRxTxTimeDiff);
+
+				mrResult.tsc.Eci = item.ENBId * 256L + item.CellId;
+				mrResult.tsc.CellId = mrResult.tsc.Eci;
+			}
+			statLteNbCell(mrResult, item, ncLteMap);
+			statGsmNbCell(mrResult, item, ncGsmMap);
+			statTdsNbCell(mrResult, item, ncTdsMap);
+		}
+
+		private void OutputOneMr(HashMap<String, NC_LTE> ncLteMap, HashMap<String, NC_GSM> ncGsmMap, HashMap<String, NC_TDS> ncTdsMap,
+				SIGNAL_MR_All mrResult, Context context)
+		{
+			try
+			{
+				location = MrLocation.calcLongLac(mrResult.tsc.LteScTadv, mrResult.tsc.LteScRTTD, mrResult.tsc.LteScAOA, lteCell.ilongitude, lteCell.ilatitude, lteCell.indoor == 1 ? true : false, (int) lteCell.angle,
+						true);
+				if (location == null || location.longitude <= 0 || location.latitude <= 0) {
+					clear(ncLteMap, ncGsmMap, ncTdsMap, mrResult);
+					return;}
+			}
+			catch (Exception e)
+			{
+				clear(ncLteMap, ncGsmMap, ncTdsMap, mrResult);
+				return;
+			}
+			// NC LTE
+			List<Map.Entry<String, NC_LTE>> ncLteList = new ArrayList<Map.Entry<String, NC_LTE>>(ncLteMap.entrySet());
+			Collections.sort(ncLteList, new Comparator<Map.Entry<String, NC_LTE>>()
+			{
+				public int compare(Map.Entry<String, NC_LTE> o1, Map.Entry<String, NC_LTE> o2)
+				{
+					return o2.getValue().LteNcRSRP - o1.getValue().LteNcRSRP;
+				}
+			});
+
+			int cmccLteCount = 0;
+			int dxCount = 0;
+			int ltCount = 0;
+//			int lteCount_Freq = 0;
+
+//			NC_LTE nclte_lt = null;
+//			NC_LTE nclte_dx = null;
+
+			for (int i = 0; i < ncLteList.size(); ++i)
+			{
+				NC_LTE ncItem = ncLteList.get(i).getValue();
+
+				int type = Func.getFreqType(ncItem.LteNcEarfcn);
+				if (type == Func.YYS_YiDong)
+				{
+					if (cmccLteCount < mrResult.tlte.length)
+					{
+						mrResult.tlte[cmccLteCount] = ncItem;
+						cmccLteCount++;
+					}
+				}
+				else if (type == Func.YYS_LianTong)
+				{
+					if (ltCount < mrResult.lt_freq.length)
+					{
+						boolean replace = false;
+						for (int lt=0; lt<ltCount;i++)
+						{
+							//频点相同的话，取rsrp值更大的
+							if (ncItem.LteNcEarfcn == mrResult.lt_freq[lt].LteNcEarfcn)
+							{
+								replace = true;
+								break;
+							}
+						}
+						if (!replace)
+						{
+							mrResult.lt_freq[ltCount] = ncItem;
+							ltCount++;
+						}
+					}
+				}
+				else if (type == Func.YYS_DianXin)
+				{
+					if (dxCount < mrResult.dx_freq.length)
+					{
+						boolean replace = false;
+						for (int dx=0; dx<dxCount;i++)
+						{
+							//频点相同的话，取rsrp值更大的
+							if (ncItem.LteNcEarfcn == mrResult.dx_freq[dx].LteNcEarfcn)
+							{
+								replace = true;
+								break;
+							}
+						}
+						if (!replace)
+						{
+							mrResult.dx_freq[dxCount] = ncItem;
+							dxCount++;
+						}
+					}
+				}
+			}
+
+			mrResult.nccount[0] = (byte) cmccLteCount;
+//			mrResult.nccount[2] = (byte) (ltCount+dxCount);
+
+			// NC TDS
+			// TD只保留前2个邻区
+			List<Map.Entry<String, NC_TDS>> ncTdsList = new ArrayList<Map.Entry<String, NC_TDS>>(ncTdsMap.entrySet());
+			Collections.sort(ncTdsList, new Comparator<Map.Entry<String, NC_TDS>>()
+			{
+				public int compare(Map.Entry<String, NC_TDS> o1, Map.Entry<String, NC_TDS> o2)
+				{
+					return o2.getValue().TdsPccpchRSCP - o1.getValue().TdsPccpchRSCP;
+				}
+			});
+
+//			int count = mrResult.ttds.length < ncTdsList.size() ? mrResult.ttds.length : ncTdsList.size();
+//			count = count > 2 ? 2 : count;
+//			mrResult.nccount[1] = (byte) count;
+//
+//			for (int i = 0; i < count; ++i)
+//			{
+//				mrResult.ttds[i] = ncTdsList.get(i).getValue();
+//			}
+
+			// NC GSM
+			// GSM只保留前1个邻区
+			List<Map.Entry<String, NC_GSM>> ncGsmList = new ArrayList<Map.Entry<String, NC_GSM>>(ncGsmMap.entrySet());
+			Collections.sort(ncGsmList, new Comparator<Map.Entry<String, NC_GSM>>()
+			{
+				public int compare(Map.Entry<String, NC_GSM> o1, Map.Entry<String, NC_GSM> o2)
+				{
+					return o2.getValue().GsmNcellCarrierRSSI - o1.getValue().GsmNcellCarrierRSSI;
+				}
+			});
+
+			int count = mrResult.tgsm.length < ncGsmList.size() ? mrResult.tgsm.length : ncGsmList.size();
+			count = count > 1 ? 1 : count;
+			mrResult.nccount[1] = (byte) count;
+
+			for (int i = 0; i < count; ++i)
+			{
+				mrResult.tgsm[i] = ncGsmList.get(i).getValue();
+			}
+
+			try {
+//				long eci = mrResult.tsc.Eci;
+//				if (eci < 0) {
+//					return;
+//				}
+//				LteCellInfo lteCell = CellConfig.GetInstance().getLteCell(eci);
+//				if (lteCell == null) {
+//					return;
+//				}
+//				int rttd = mrResult.tsc.LteScRTTD;
+//				int aoa = mrResult.tsc.LteScAOA;
+//				int tadv = mrResult.tsc.LteScTadv;
+//				MrLocationItem location = MrLocation.calcLongLac(tadv, rttd, aoa, lteCell.ilongitude, lteCell.ilatitude, lteCell.indoor == 1 ? true : false, (int) lteCell.angle,
+//						true);
+//				if (location == null || location.longitude <= 0 || location.latitude <= 0) {
+//					return;
+//				}
+				GridItem gridItem = GridItem.GetGridItem(0, location.longitude, location.latitude);
+				if (gridItem.getTLLongitude() <= 0 || gridItem.getTLLatitude() <= 0)
+				{
+					return;
+				}
+				GridTypeKey keyItem = new GridTypeKey(gridItem.getTLLongitude(), gridItem.getTLLatitude(), MroVillageDeal.DataType_Mro);
+
+				String valueStr = lteCell.cityid + StaticConfig.DataSliper2 + location.longitude + StaticConfig.DataSliper2 + location.latitude + StaticConfig.DataSliper2 + mrResult.GetDataEx();
+				resultValue.set(valueStr);
+				context.write(keyItem, resultValue);
+			} catch (Exception e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+			clear(ncLteMap, ncGsmMap, ncTdsMap, mrResult);
+		}
+		
+		private void clear(HashMap<String, NC_LTE> ncLteMap, HashMap<String, NC_GSM> ncGsmMap,
+				HashMap<String, NC_TDS> ncTdsMap, SIGNAL_MR_All mrResult) {
+			mrResult.Clear();
+			ncLteMap.clear();
+			ncGsmMap.clear();
+			ncTdsMap.clear();
+		}
+
+		public static double getValidValueDouble(double srcValue, double targValue)
+		{
+			if (targValue != StaticConfig.Double_Abnormal)
+			{
+				return targValue;
+			}
+			return srcValue;
+		}
+
+		public static int getValidValueInt(int srcValue, int targValue)
+		{
+			if (targValue != StaticConfig.Int_Abnormal)
+			{
+				return targValue;
+			}
+			return srcValue;
+		}
+
+		public static long getValidValueLong(long srcValue, long targValue)
+		{
+			if (targValue != StaticConfig.Long_Abnormal)
+			{
+				return targValue;
+			}
+			return srcValue;
+		}
+
+		public static String getValidValueString(String srcValue, String targValue)
+		{
+			if (!targValue.equals(""))
+			{
+				return targValue;
+			}
+			return srcValue;
+		}
+
+		private static void statLteNbCell(SIGNAL_MR_All mrResult, MroOrigDataMT item, HashMap<String, NC_LTE> ncLteMap)
+		{
+			if (item.LteNcRSRP != StaticConfig.Int_Abnormal && item.LteNcEarfcn > 0 && item.LteNcPci > 0)
+			{
+				String key = item.LteNcEarfcn + "_" + item.LteNcPci;
+
+				NC_LTE data = ncLteMap.get(key);
+				if (data == null)
+				{
+					data = new NC_LTE();
+					data.LteNcEarfcn = item.LteNcEarfcn;
+					data.LteNcPci = item.LteNcPci;
+					data.LteNcRSRP = item.LteNcRSRP;
+					data.LteNcRSRQ = item.LteScRSRQ;
+
+					ncLteMap.put(key, data);
+				}
+				else
+				{
+					if (item.LteNcRSRP > data.LteNcRSRP)
+					{
+						data.LteNcRSRP = item.LteNcRSRP;
+						data.LteNcRSRQ = item.LteNcRSRQ;
+					}
+				}
+			}
+		}
+
+		private static void statGsmNbCell(SIGNAL_MR_All mrResult, MroOrigDataMT item, HashMap<String, NC_GSM> ncGsmMap)
+		{
+			if (item.GsmNcellCarrierRSSI != StaticConfig.Int_Abnormal && item.GsmNcellBcch > 0 && item.GsmNcellBcc > 0)
+			{
+				String key = item.GsmNcellBcch + "_" + item.GsmNcellBcc;
+
+				NC_GSM data = ncGsmMap.get(key);
+				if (data == null)
+				{
+					data = new NC_GSM();
+					data.GsmNcellCarrierRSSI = item.GsmNcellCarrierRSSI;
+					data.GsmNcellBsic = item.GsmNcellBcc;
+					data.GsmNcellBcch = item.GsmNcellBcch;
+
+					ncGsmMap.put(key, data);
+				}
+				else
+				{
+					if (item.GsmNcellCarrierRSSI > data.GsmNcellCarrierRSSI)
+					{
+						data.GsmNcellCarrierRSSI = item.GsmNcellCarrierRSSI;
+					}
+				}
+
+			}
+		}
+
+		private static void statTdsNbCell(SIGNAL_MR_All mrResult, MroOrigDataMT item, HashMap<String, NC_TDS> ncTdsMap)
+		{
+			if (item.TdsPccpchRSCP != StaticConfig.Int_Abnormal && item.TdsNcellUarfcn > 0 && item.TdsCellParameterId > 0)
+			{
+				String key = item.TdsNcellUarfcn + "_" + item.TdsCellParameterId;
+
+				NC_TDS data = ncTdsMap.get(key);
+				if (data == null)
+				{
+					data = new NC_TDS();
+					data.TdsPccpchRSCP = item.TdsPccpchRSCP;
+					data.TdsNcellUarfcn = (short) item.TdsNcellUarfcn;
+					data.TdsCellParameterId = (short) item.TdsCellParameterId;
+
+					ncTdsMap.put(key, data);
+				}
+				else
+				{
+					if (item.TdsPccpchRSCP > data.TdsPccpchRSCP)
+					{
+						data.TdsPccpchRSCP = item.TdsPccpchRSCP;
+					}
+				}
+
+			}
+		}
+
+	}
+
+	
+	
+
+//	public static class MroDataMapper extends Mapper<Object, Text, GridTypeKey, Text>
+//	{
+//		private ParseItem parseItem;
+//		private Text resultValue = new Text();
+//		private DataAdapterReader dataAdapterReader_MROSRC;
+//		private SIGNAL_MR_All mrResult;
+//		private HashMap<String, NC_LTE> ncLteMap;
+//		private HashMap<String, NC_GSM> ncGsmMap;
+//		private HashMap<String, NC_TDS> ncTdsMap;
+//		private Map<String, MyInt> tempMap;
+//		private int maxInt = -1;
+//		private int tmpLong = -1;
+//		private int tmpLat = -1;
+//		LteCellInfo lteCell = null;
+//
+//		@Override
+//		protected void setup(Context context) throws IOException, InterruptedException
+//		{
+//			super.setup(context);
+//			Configuration conf = context.getConfiguration();
+//			// 初始化lte小区的信息
+//			if (!CellConfig.GetInstance().loadLteCell(conf))
+//			{
+//				LOGHelper.GetLogger().writeLog(LogType.error, "ltecell init error 请检查！");
+//				throw (new IOException("ltecell init error 请检查！"));
+//			}
+//			parseItem = MainModel.GetInstance().getDataAdapterConfig().getParseItem("MRO-SRC");
+//			if (parseItem == null)
+//			{
+//				throw new IOException("parse item do not get.");
+//			}
+//			ncLteMap = new HashMap<String, NC_LTE>();
+//			ncGsmMap = new HashMap<String, NC_GSM>();
+//			ncTdsMap = new HashMap<String, NC_TDS>();
+//			
+//			mrResult = new SIGNAL_MR_All();
+//			mrResult.Clear();
+//			dataAdapterReader_MROSRC = new DataAdapterReader(parseItem);
+//			
+//			tempMap = new HashMap<String, MyInt>();
+//		}
+//
+//		/**
+//		 * Called once at the end of the task.
+//		 */
+//		@Override
+//		protected void cleanup(Context context) throws IOException, InterruptedException
+//		{
+//			if (mrResult.tsc.MmeUeS1apId > 0)
+//			{
+//				outOneMroVillage(context);
+//				clear();
+//			}
+//			LOGHelper.GetLogger().writeLog(LogType.info, "max location: " + "\t" + tmpLong + "\t" + tmpLat + "\t" + maxInt);
+//			super.cleanup(context);
+//		}
+//
+//		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+//		{
+//			String[] strs = null;
+//			strs = value.toString().split(parseItem.getSplitMark(), -1);
+//			MroOrigDataMT item = new MroOrigDataMT();
+//			try
+//			{
+//				dataAdapterReader_MROSRC.readData(strs);
+//				item.FillData(dataAdapterReader_MROSRC);
+////				long ecitemp = item.ENBId * 256L + item.CellId;
+////				if (ecitemp < 0)
+////				{
+////					return;
+////				}
+////				lteCell = CellConfig.GetInstance().getLteCell(ecitemp);
+////				if (lteCell == null)
+////				{
+////					return;
+////				}
+//			}
+//			catch (Exception e)
+//			{
+//				LOGHelper.GetLogger().writeLog(LogType.error, "MroOrigDataMT error ", e);
+//				// continue;
+//			}
+//			int Weight = getValidValueInt(mrResult.tsc.Weight, item.Weight);
+//			if (Weight == 1 && mrResult.tsc.MmeUeS1apId > 0)
+//			{
+//				outOneMroVillage(context);
+//				clear();
+//			}
+//
+//			try
+//			{
+//				mrResult.tsc.beginTime = (int) (item.beginTime.getTime() / 1000L);
+//				mrResult.tsc.beginTimems = (int) (item.beginTime.getTime() % 1000L);
+//			}
+//			catch (Exception e)
+//			{
+//				mrResult.tsc.beginTime = 0;
+//				mrResult.tsc.beginTimems = 0;
+//				// continue;
+//			}
+//
+//			mrResult.tsc.Weight = Weight;
+//			mrResult.tsc.IMSI = 0;
+//			mrResult.tsc.TAC = 0;
+//			mrResult.tsc.ENBId = getValidValueInt(mrResult.tsc.ENBId, item.ENBId);
+//			mrResult.tsc.Earfcn = getValidValueInt(mrResult.tsc.Earfcn, item.LteScEarfcn);
+//			if (Weight == 1 && mrResult.tsc.MmeUeS1apId <= 0)
+//			{
+//				mrResult.tsc.MmeUeS1apId = getValidValueLong(mrResult.tsc.MmeUeS1apId, item.MmeUeS1apId);
+//				mrResult.tsc.EventType = getValidValueString(mrResult.tsc.EventType, item.EventType);
+//				mrResult.tsc.LteScRSRP = getValidValueInt(mrResult.tsc.LteScRSRP, item.LteScRSRP);
+//				mrResult.tsc.LteScRSRQ = getValidValueInt(mrResult.tsc.LteScRSRQ, item.LteScRSRQ);
+//				mrResult.tsc.LteScEarfcn = getValidValueInt(mrResult.tsc.LteScEarfcn, item.LteScEarfcn);
+//				mrResult.tsc.LteScPci = getValidValueInt(mrResult.tsc.LteScPci, item.LteScPci);
+//				mrResult.tsc.LteScBSR = getValidValueInt(mrResult.tsc.LteScBSR, item.LteScBSR);
+//				mrResult.tsc.LteScRTTD = getValidValueInt(mrResult.tsc.LteScRTTD, item.LteScRTTD);
+//				mrResult.tsc.LteScTadv = getValidValueInt(mrResult.tsc.LteScTadv, item.LteScTadv);
+//				mrResult.tsc.LteScAOA = getValidValueInt(mrResult.tsc.LteScAOA, item.LteScAOA);
+//				mrResult.tsc.LteScPHR = getValidValueInt(mrResult.tsc.LteScPHR, item.LteScPHR);
+//				mrResult.tsc.LteScSinrUL = getValidValueInt(mrResult.tsc.LteScSinrUL, item.LteScSinrUL);
+//				mrResult.tsc.LteScRIP = getValidValueInt(mrResult.tsc.LteScRIP, item.LteScRIP);
+//
+//				for (int i = 0; i < mrResult.tsc.LteScPlrULQci.length; ++i)
+//				{
+//					mrResult.tsc.LteScPlrULQci[i] = getValidValueInt(mrResult.tsc.LteScPlrULQci[i], item.LteScPlrULQci[i]);
+//				}
+//
+//				for (int i = 0; i < mrResult.tsc.LteScPlrDLQci.length; ++i)
+//				{
+//					mrResult.tsc.LteScPlrDLQci[i] = getValidValueInt(mrResult.tsc.LteScPlrDLQci[i], item.LteScPlrDLQci[i]);
+//				}
+//
+//				mrResult.tsc.LteScRI1 = getValidValueInt(mrResult.tsc.LteScRI1, item.LteScRI1);
+//				mrResult.tsc.LteScRI2 = getValidValueInt(mrResult.tsc.LteScRI2, item.LteScRI2);
+//				mrResult.tsc.LteScRI4 = getValidValueInt(mrResult.tsc.LteScRI4, item.LteScRI4);
+//				mrResult.tsc.LteScRI8 = getValidValueInt(mrResult.tsc.LteScRI8, item.LteScRI8);
+//				mrResult.tsc.LteScPUSCHPRBNum = getValidValueInt(mrResult.tsc.LteScPUSCHPRBNum, item.LteScPUSCHPRBNum);
+//				mrResult.tsc.LteScPDSCHPRBNum = getValidValueInt(mrResult.tsc.LteScPDSCHPRBNum, item.LteScPDSCHPRBNum);
+//				mrResult.tsc.LteSceNBRxTxTimeDiff = getValidValueInt(mrResult.tsc.LteSceNBRxTxTimeDiff, item.LteSceNBRxTxTimeDiff);
+//
+//				mrResult.tsc.Eci = item.ENBId * 256L + item.CellId;
+//				mrResult.tsc.CellId = mrResult.tsc.Eci;
+//				
+//				if(mrResult.tsc.Eci < 0)
+//				{
+//					return;
+//				}
+//				lteCell = CellConfig.GetInstance().getLteCell(mrResult.tsc.Eci);
+//				if (lteCell == null)
+//				{
+//					return;
+//				}
+//			}
+//			statLteNbCell(mrResult, item, ncLteMap);
+//			statGsmNbCell(mrResult, item, ncGsmMap);
+//			statTdsNbCell(mrResult, item, ncTdsMap);
+//		}
+//
+//		private void clear() {
+//			resultValue.clear();
+//			mrResult.Clear();
+//			ncLteMap.clear();
+//			ncGsmMap.clear();
+//			ncTdsMap.clear();
+//		}
+//
+//		private void outOneMroVillage(Context context) throws IOException, InterruptedException {
+//			MrLocationItem location = MrLocation.calcLongLac(mrResult.tsc.LteScTadv, mrResult.tsc.LteScRTTD, mrResult.tsc.LteScAOA, lteCell.ilongitude, lteCell.ilatitude, lteCell.indoor == 1 ? true : false, (int) lteCell.angle,
+//					true);
+//			if (location == null)
+//			{
+//				return;
+//			}
+//			if (location.longitude <= 0 || location.latitude <= 0)
+//			{
+//				LOGHelper.GetLogger().writeLog(LogType.info, "get location error1" + "\t" + location.longitude + "\t" + location.latitude);
+//				return;
+//			}
+//			GridItem gridItem = GridItem.GetGridItem(0, location.longitude, location.latitude);
+//			if (gridItem.getTLLongitude() <= 0 || gridItem.getTLLatitude() <= 0)
+//			{
+//				LOGHelper.GetLogger().writeLog(LogType.info, "get location error2" + "\t" + gridItem.getTLLongitude() + "\t" + gridItem.getTLLatitude());
+//				return;
+//			}
+//			
+//			GridTypeKey keyItem = new GridTypeKey(gridItem.getTLLongitude(), gridItem.getTLLatitude(), MroVillageDeal.DataType_Mro);
+//			String mrall = OutputOneMr(ncLteMap, ncGsmMap, ncTdsMap, mrResult);
+//			String valueStr = lteCell.cityid + StaticConfig.DataSliper2 + location.longitude + StaticConfig.DataSliper2 + location.latitude + StaticConfig.DataSliper2 + mrall;
+//			mrall = "";
+//			resultValue.set(valueStr);
+//			valueStr = "";
+//			///////////////////////////////////////////////////////////////////////////
+////			MyInt tmpInt = tempMap.get(keyItem.getTllong() + "_" + keyItem.getTllat());
+////			if (tmpInt == null)
+////			{
+////				tmpInt = new MyInt(0);
+////				tempMap.put(keyItem.getTllong() + "_" + keyItem.getTllat(), tmpInt);
+////			}
+////			tmpInt.data++;
+////			if (maxInt < tmpInt.data)
+////			{
+////				maxInt = tmpInt.data;
+////				tmpLong = keyItem.getTllong();
+////				tmpLat = keyItem.getTllat();
+////			}
+////
+////			if (keyItem.getTllong() == 2147480000)
+////			{
+////				LOGHelper.GetLogger().writeLog(LogType.info, "get location" + "\t" + keyItem.getTllong() + "\t" + keyItem.getTllat() + "\t" + lteCell.cellid + "\t" + lteCell.ilongitude + "\t"
+////						+ lteCell.ilatitude + "\t" + lteCell.angle + "\t" + mrResult.tsc.LteScRTTD + "\t" + mrResult.tsc.LteScTadv + "\t" + mrResult.tsc.LteScAOA + "\t" + location.longitude + "\t" + location.latitude);
+////			}
+//			context.write(keyItem, resultValue);
+//		}
+//	}
+//
+//	public static class MroDataMapper_UEMR extends DataDealMapper<Object, Text, GridTypeKey, Text>
+//	{
+//		private long eci;
+//		private int rttd;
+//		private int tadv;
+//		private int aoa;
+//		private String valueStr = "";
+//		private Text resText = new Text();
+//
+//		private Map<String, MyInt> tempMap;
+//		private int maxInt = -1;
+//		private int tmpLong = -1;
+//		private int tmpLat = -1;
+//
+//		@Override
+//		protected void setup(Context context) throws IOException, InterruptedException
+//		{
+//			super.setup(context);
+//
+//			// 初始化lte小区的信息
+//			if (!CellConfig.GetInstance().loadLteCell(conf))
+//			{
+//				LOGHelper.GetLogger().writeLog(LogType.error, "ltecell init error 请检查！");
+//				throw (new IOException("ltecell init error 请检查！"));
+//			}
+//
+//			tempMap = new HashMap<String, MyInt>();
+//		}
+//
+//		/**
+//		 * Called once at the end of the task.
+//		 */
+//		@Override
+//		protected void cleanup(Context context) throws IOException, InterruptedException
+//		{
+//			LOGHelper.GetLogger().writeLog(LogType.info, "max location: " + "\t" + tmpLong + "\t" + tmpLat + "\t" + maxInt);
+//
+//			super.cleanup(context);
+//		}
+//
+//		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+//		{
+//			String[] valstrs = value.toString().split(StaticConfig.DataSliper2 + "|" + "\t", 30);
+//
+//			if (valstrs.length < 28)
+//			{
+//				return;
+//			}
+//
+//			try
+//			{
+//				eci = DataGeter.GetLong(valstrs[11]);
+//				rttd = DataGeter.GetInt(valstrs[24]);
+//				tadv = DataGeter.GetInt(valstrs[25]);
+//				aoa = DataGeter.GetInt(valstrs[26]);
+//			}
+//			catch (Exception e)
+//			{
+//				return;
+//			}
+//
+//			if (eci < 0)
+//				return;
+//
+//			LteCellInfo lteCell = CellConfig.GetInstance().getLteCell(eci);
+//			if (lteCell == null)
+//			{
+//				// LOGHelper.GetLogger().writeLog(LogType.info, "cell not found"
+//				// + "\t" + value.toString());
+//				return;
+//			}
+//
+//			MrLocationItem location = MrLocation.calcLongLac(tadv, rttd, aoa, lteCell.ilongitude / 10000000.0, lteCell.ilatitude / 10000000.0, lteCell.indoor == 1 ? true : false, (int) lteCell.angle,
+//					true);
+//			if (location == null)
+//			{
+//				// LOGHelper.GetLogger().writeLog(LogType.info, "get location
+//				// error" + "\t" + value.toString());
+//				return;
+//			}
+//
+//			if (location.longitude <= 0 || location.latitude <= 0)
+//			{
+//				LOGHelper.GetLogger().writeLog(LogType.info, "get location error1" + "\t" + location.longitude + "\t" + location.latitude);
+//				return;
+//			}
+//
+//			// if(location.longitude > 0)
+//			// {
+//			// LOGHelper.GetLogger().writeLog(LogType.info, location.longitude +
+//			// "\t" + location.latitude + "\t" + value.toString());
+//			// }
+//
+//			GridItem gridItem = GridItem.GetGridItem(0, location.longitude, location.latitude);
+//			if (gridItem.getTLLongitude() <= 0 || gridItem.getTLLatitude() <= 0)
+//			{
+//				LOGHelper.GetLogger().writeLog(LogType.info, "get location error2" + "\t" + gridItem.getTLLongitude() + "\t" + gridItem.getTLLatitude());
+//				return;
+//			}
+//
+//			GridTypeKey keyItem = new GridTypeKey(gridItem.getTLLongitude(), gridItem.getTLLatitude(), 100);
+//
+//			valueStr = lteCell.cityid + StaticConfig.DataSliper2 + location.longitude + StaticConfig.DataSliper2 + location.latitude + StaticConfig.DataSliper2 + value.toString();
+//			resText.set(valueStr);
+//
+//			///////////////////////////////////////////////////////////////////////////
+//			MyInt tmpInt = tempMap.get(keyItem.getTllong() + "_" + keyItem.getTllat());
+//			if (tmpInt == null)
+//			{
+//				tmpInt = new MyInt(0);
+//				tempMap.put(keyItem.getTllong() + "_" + keyItem.getTllat(), tmpInt);
+//			}
+//			tmpInt.data++;
+//			if (maxInt < tmpInt.data)
+//			{
+//				maxInt = tmpInt.data;
+//				tmpLong = keyItem.getTllong();
+//				tmpLat = keyItem.getTllat();
+//			}
+//
+//			if (keyItem.getTllong() == 2147480000)
+//			{
+//				LOGHelper.GetLogger().writeLog(LogType.info, "get location" + "\t" + keyItem.getTllong() + "\t" + keyItem.getTllat() + "\t" + lteCell.cellid + "\t" + lteCell.ilongitude + "\t"
+//						+ lteCell.ilatitude + "\t" + lteCell.angle + "\t" + rttd + "\t" + tadv + "\t" + aoa + "\t" + location.longitude + "\t" + location.latitude);
+//			}
+//
+//			context.write(keyItem, resText);
+//		}
+//
+//	}
+//
+//
+//	private static String OutputOneMr(HashMap<String, NC_LTE> ncLteMap, HashMap<String, NC_GSM> ncGsmMap, HashMap<String, NC_TDS> ncTdsMap,
+//			SIGNAL_MR_All mrResult)
+//	{
+//		// NC LTE
+//		List<Map.Entry<String, NC_LTE>> ncLteList = new ArrayList<Map.Entry<String, NC_LTE>>(ncLteMap.entrySet());
+//		Collections.sort(ncLteList, new Comparator<Map.Entry<String, NC_LTE>>()
+//		{
+//			public int compare(Map.Entry<String, NC_LTE> o1, Map.Entry<String, NC_LTE> o2)
+//			{
+//				return o2.getValue().LteNcRSRP - o1.getValue().LteNcRSRP;
+//			}
+//		});
+//
+//		int cmccLteCount = 0;
+//		int lteCount_Freq = 0;
+//
+//		NC_LTE nclte_lt = null;
+//		NC_LTE nclte_dx = null;
+//
+//		for (int i = 0; i < ncLteList.size(); ++i)
+//		{
+//			NC_LTE ncItem = ncLteList.get(i).getValue();
+//
+//			int type = Func.getFreqType(ncItem.LteNcEarfcn);
+//			if (type == Func.YYS_YiDong)
+//			{
+//				if (cmccLteCount < mrResult.tlte.length)
+//				{
+//					mrResult.tlte[cmccLteCount] = ncItem;
+//					cmccLteCount++;
+//				}
+//			}
+//			else if (type == Func.YYS_LianTong)
+//			{
+//				if (nclte_lt == null || ncItem.LteNcRSRP > nclte_lt.LteNcRSRP)
+//				{
+//					nclte_lt = ncItem;
+//				}
+//			}
+//			else if (type == Func.YYS_DianXin)
+//			{
+//				if (nclte_dx == null || ncItem.LteNcRSRP > nclte_dx.LteNcRSRP)
+//				{
+//					nclte_dx = ncItem;
+//				}
+//			}
+//		}
+//		if (nclte_dx != null)
+//		{
+//			mrResult.LteScRSRP_DX = nclte_dx.LteNcRSRP;
+//			mrResult.LteScRSRQ_DX = nclte_dx.LteNcRSRQ;
+//			mrResult.LteScEarfcn_DX = nclte_dx.LteNcEarfcn;
+//			mrResult.LteScPci_DX = nclte_dx.LteNcPci;
+//		}
+//		if (nclte_lt != null)
+//		{
+//			mrResult.LteScRSRP_LT = nclte_lt.LteNcRSRP;
+//			mrResult.LteScRSRQ_LT = nclte_lt.LteNcRSRQ;
+//			mrResult.LteScEarfcn_LT = nclte_lt.LteNcEarfcn;
+//			mrResult.LteScPci_LT = nclte_lt.LteNcPci;
+//		}
+//
+//		// 添加联通数据
+//		if (nclte_lt != null && mrResult.fillNclte_Freq(nclte_lt))
+//		{
+//			lteCount_Freq++;
+//		}
+//		// 添加电信数据
+//		if (nclte_dx != null && mrResult.fillNclte_Freq(nclte_dx))
+//		{
+//			lteCount_Freq++;
+//		}
+//
+//		mrResult.nccount[0] = (byte) cmccLteCount;
+//		mrResult.nccount[2] = (byte) (lteCount_Freq);
+//
+//		// NC TDS
+//		// TD只保留前2个邻区
+//		List<Map.Entry<String, NC_TDS>> ncTdsList = new ArrayList<Map.Entry<String, NC_TDS>>(ncTdsMap.entrySet());
+//		Collections.sort(ncTdsList, new Comparator<Map.Entry<String, NC_TDS>>()
+//		{
+//			public int compare(Map.Entry<String, NC_TDS> o1, Map.Entry<String, NC_TDS> o2)
+//			{
+//				return o2.getValue().TdsPccpchRSCP - o1.getValue().TdsPccpchRSCP;
+//			}
+//		});
+//
+//		int count = mrResult.ttds.length < ncTdsList.size() ? mrResult.ttds.length : ncTdsList.size();
+//		count = count > 2 ? 2 : count;
+//		mrResult.nccount[1] = (byte) count;
+//
+//		for (int i = 0; i < count; ++i)
+//		{
+//			mrResult.ttds[i] = ncTdsList.get(i).getValue();
+//		}
+//
+//		// NC GSM
+//		// GSM只保留前1个邻区
+//		List<Map.Entry<String, NC_GSM>> ncGsmList = new ArrayList<Map.Entry<String, NC_GSM>>(ncGsmMap.entrySet());
+//		Collections.sort(ncGsmList, new Comparator<Map.Entry<String, NC_GSM>>()
+//		{
+//			public int compare(Map.Entry<String, NC_GSM> o1, Map.Entry<String, NC_GSM> o2)
+//			{
+//				return o2.getValue().GsmNcellCarrierRSSI - o1.getValue().GsmNcellCarrierRSSI;
+//			}
+//		});
+//
+//		count = mrResult.tgsm.length < ncGsmList.size() ? mrResult.tgsm.length : ncGsmList.size();
+//		count = count > 1 ? 1 : count;
+//		mrResult.nccount[2] = (byte) count;
+//
+//		for (int i = 0; i < count; ++i)
+//		{
+//			mrResult.tgsm[i] = ncGsmList.get(i).getValue();
+//		}
+//		return mrResult.GetDataEx();
+////		mrResult.Clear();
+////		ncLteMap.clear();
+////		ncGsmMap.clear();
+////		ncTdsMap.clear();
+//	}
+//
+//	public static int getValidValueInt(int srcValue, int targValue)
+//	{
+//		if (targValue != StaticConfig.Int_Abnormal)
+//		{
+//			return targValue;
+//		}
+//		return srcValue;
+//	}
+//
+//	public static long getValidValueLong(long srcValue, long targValue)
+//	{
+//		if (targValue != StaticConfig.Long_Abnormal)
+//		{
+//			return targValue;
+//		}
+//		return srcValue;
+//	}
+//
+//	public static String getValidValueString(String srcValue, String targValue)
+//	{
+//		if (!targValue.equals(""))
+//		{
+//			return targValue;
+//		}
+//		return srcValue;
+//	}
+//
+//	private static void statLteNbCell(SIGNAL_MR_All mrResult, MroOrigDataMT item, HashMap<String, NC_LTE> ncLteMap)
+//	{
+//		if (item.LteNcRSRP != StaticConfig.Int_Abnormal && item.LteNcEarfcn > 0 && item.LteNcPci > 0)
+//		{
+//			String key = item.LteNcEarfcn + "_" + item.LteNcPci;
+//
+//			NC_LTE data = ncLteMap.get(key);
+//			if (data == null)
+//			{
+//				data = new NC_LTE();
+//				data.LteNcEarfcn = item.LteNcEarfcn;
+//				data.LteNcPci = item.LteNcPci;
+//				data.LteNcRSRP = item.LteNcRSRP;
+//				data.LteNcRSRQ = item.LteScRSRQ;
+//
+//				ncLteMap.put(key, data);
+//			}
+//			else
+//			{
+//				if (item.LteNcRSRP > data.LteNcRSRP)
+//				{
+//					data.LteNcRSRP = item.LteNcRSRP;
+//					data.LteNcRSRQ = item.LteNcRSRQ;
+//				}
+//			}
+//		}
+//	}
+//
+//	private static void statGsmNbCell(SIGNAL_MR_All mrResult, MroOrigDataMT item, HashMap<String, NC_GSM> ncGsmMap)
+//	{
+//		if (item.GsmNcellCarrierRSSI != StaticConfig.Int_Abnormal && item.GsmNcellBcch > 0 && item.GsmNcellBcc > 0)
+//		{
+//			String key = item.GsmNcellBcch + "_" + item.GsmNcellBcc;
+//
+//			NC_GSM data = ncGsmMap.get(key);
+//			if (data == null)
+//			{
+//				data = new NC_GSM();
+//				data.GsmNcellCarrierRSSI = item.GsmNcellCarrierRSSI;
+//				data.GsmNcellBsic = item.GsmNcellBcc;
+//				data.GsmNcellBcch = item.GsmNcellBcch;
+//
+//				ncGsmMap.put(key, data);
+//			}
+//			else
+//			{
+//				if (item.GsmNcellCarrierRSSI > data.GsmNcellCarrierRSSI)
+//				{
+//					data.GsmNcellCarrierRSSI = item.GsmNcellCarrierRSSI;
+//				}
+//			}
+//
+//		}
+//	}
+//
+//	private static void statTdsNbCell(SIGNAL_MR_All mrResult, MroOrigDataMT item, HashMap<String, NC_TDS> ncTdsMap)
+//	{
+//		if (item.TdsPccpchRSCP != StaticConfig.Int_Abnormal && item.TdsNcellUarfcn > 0 && item.TdsCellParameterId > 0)
+//		{
+//			String key = item.TdsNcellUarfcn + "_" + item.TdsCellParameterId;
+//
+//			NC_TDS data = ncTdsMap.get(key);
+//			if (data == null)
+//			{
+//				data = new NC_TDS();
+//				data.TdsPccpchRSCP = item.TdsPccpchRSCP;
+//				data.TdsNcellUarfcn = (short) item.TdsNcellUarfcn;
+//				data.TdsCellParameterId = (short) item.TdsCellParameterId;
+//
+//				ncTdsMap.put(key, data);
+//			}
+//			else
+//			{
+//				if (item.TdsPccpchRSCP > data.TdsPccpchRSCP)
+//				{
+//					data.TdsPccpchRSCP = item.TdsPccpchRSCP;
+//				}
+//			}
+//
+//		}
+//	}
+
+	
+	public static class GridPartitioner extends Partitioner<GridTypeKey, Text> implements Configurable
+	{
+		private Configuration conf = null;
+
+		@Override
+		public Configuration getConf()
+		{
+			return conf;
+		}
+
+		@Override
+		public void setConf(Configuration conf)
+		{
+			this.conf = conf;
+		}
+
+		@Override
+		public int getPartition(GridTypeKey key, Text value, int numOfReducer)
+		{
+			// return Math.abs((int)(key.getEci() & 0x00000000ffffffffL)) %
+			// numOfReducer;
+			return Math.abs(String.valueOf(key.getTllong() + "_" + key.getTllat()).hashCode()) % numOfReducer;
+		}
+
+	}
+
+	public static class GridSortKeyComparator extends WritableComparator
+	{
+		public GridSortKeyComparator()
+		{
+			super(GridTypeKey.class, true);
+		}
+
+		@Override
+		public int compare(WritableComparable a, WritableComparable b)
+		{
+			GridTypeKey s1 = (GridTypeKey) a;
+			GridTypeKey s2 = (GridTypeKey) b;
+			return s1.compareTo(s2);
+		}
+
+	}
+
+	public static class GridSortKeyGroupComparator extends WritableComparator
+	{
+
+		public GridSortKeyGroupComparator()
+		{
+			super(GridTypeKey.class, true);
+		}
+
+		@Override
+		public int compare(Object a, Object b)
+		{
+			GridTypeKey s1 = (GridTypeKey) a;
+			GridTypeKey s2 = (GridTypeKey) b;
+
+			if (s1.getTllong() > s2.getTllong())
+			{
+				return 1;
+			}
+			else if (s1.getTllong() < s2.getTllong())
+			{
+				return -1;
+			}
+			else
+			{
+				if (s1.getTllat() > s2.getTllat())
+				{
+					return 1;
+				}
+				else if (s1.getTllat() < s2.getTllat())
+				{
+					return -1;
+				}
+				return 0;
+			}
+
+		}
+
+	}
+
+}

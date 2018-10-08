@@ -1,0 +1,24 @@
+package cn.mastercom.bigdata.mro.stat;
+
+import cn.mastercom.bigdata.StructData.DT_Sample_4G;
+import cn.mastercom.bigdata.util.FormatTime;
+import cn.mastercom.bigdata.util.ResultOutputer;
+
+public class MrResidentSampleStatDo_4G extends MrSampleStatDo_4G {
+
+    public MrResidentSampleStatDo_4G(ResultOutputer typeResult, int sourceType, int dataType)
+    {
+        super(typeResult, sourceType, dataType);
+    }
+
+    @Override
+    protected boolean statOrNot(DT_Sample_4G sample)
+    {
+        int hour = FormatTime.getHour(sample.itime);
+        if ((hour >=9 && hour <= 11) || (hour >= 21 && hour <=23))
+        {
+            return sample.Eci > 0 && sample.isResidentUser;
+        }
+        return  false;
+    }
+}

@@ -1,0 +1,320 @@
+package cn.mastercom.bigdata.mro.stat;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import cn.mastercom.bigdata.StructData.DT_Sample_23G;
+import cn.mastercom.bigdata.StructData.DT_Sample_4G;
+import cn.mastercom.bigdata.StructData.StaticConfig;
+
+import cn.mastercom.bigdata.util.ResultOutputer;
+import cn.mastercom.bigdata.mro.stat.tableEnum.MroBsTablesEnum;
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+
+/**
+ * @Description 数据处理
+ * @author kwong
+ * @date 20170919
+ */
+// TODO ①个人认为这里将具体的 统计类抽象出去(如OutGridStatDo_4G)，再分YD/LT/DX
+// (OutGridStatDo_4G_YD)具体的处理类会更好，通过增加类来减少循环判断(单一职责原则)，减少状态传递，也方便管理。(PS:这里真正执行统计功能的是AStatDo的子类，而不是DayDataDeal_4G
+// TODO ②typeResult参数仅在输出时用到，不必在构造函数中传入，增加类的耦合度
+// TODO ③DayDataDeal_4G应该有一个上层的接口，而成员dealList的泛型应该是这个接口，那么到时候有变更的
+// 如加入WeekDataDeal/MonthDataDeal/SeasonDataDeal就可以直接加入到成员dealList中，而不影响上下游结构
+// TODO ④在mrstat包中应该分包(package)存放不同层次的接口/类，清晰结构，方便管理
+public class StatDeals {
+	private List<DayDataDeal_4G> dealList;
+
+	/**
+	 * 构造函数，会注入一些默认统计策略
+	 * 
+	 * @param typeResult
+	 */
+	public StatDeals(ResultOutputer typeResult) {
+		ArrayList<IStatDo> YDList = new ArrayList<IStatDo>();
+		ArrayList<IStatDo> LTList = new ArrayList<IStatDo>();
+		ArrayList<IStatDo> DXList = new ArrayList<IStatDo>();
+		ArrayList<IStatDo> YDLTList = new ArrayList<IStatDo>();
+		ArrayList<IStatDo> YDDXList = new ArrayList<IStatDo>();
+		dealList = new ArrayList<DayDataDeal_4G>();
+
+		//bs版本，黑龙江只需mroUserCellByMins
+		if (MainModel.GetInstance().getCompile().Assert(CompileMark.HaErBin))
+		{
+			YDList.add(new UserCellStatByFiveMinsDo(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mroUserCellByMins.getIndex()));
+			YDList.add(new UserStatDo(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.xdrCountStat.getIndex()));
+			dealList.add(new DayDataDeal_4G(new CompositeStatDo(YDList)));
+			return;
+		}
+		// YD
+		YDList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OH, MroBsTablesEnum.mroYdOutgridHigh.getIndex()));
+		YDList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OM, MroBsTablesEnum.mroYdOutgridMid.getIndex()));
+		YDList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OL, MroBsTablesEnum.mroYdOutgridLow.getIndex()));
+		YDList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IH, MroBsTablesEnum.mroYdIngridHigh.getIndex()));
+		YDList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM, MroBsTablesEnum.mroYdIngridMid.getIndex()));
+		YDList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IL, MroBsTablesEnum.mroYdIngridLow.getIndex()));
+		YDList.add(new OutGridCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OH, MroBsTablesEnum.mroOutgridCellHigh.getIndex()));
+		YDList.add(new OutGridCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OM, MroBsTablesEnum.mroOutgridCellMid.getIndex()));
+		YDList.add(new OutGridCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OL, MroBsTablesEnum.mroOutgridCellLow.getIndex()));
+		YDList.add(new InGridCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IH, MroBsTablesEnum.mroIngridCellHigh.getIndex()));
+		YDList.add(new InGridCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM, MroBsTablesEnum.mroIngridCellMid.getIndex()));
+		YDList.add(new InGridCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IL, MroBsTablesEnum.mroIngridCellLow.getIndex()));
+		YDList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IH, MroBsTablesEnum.mroYdBuildHigh.getIndex()));
+		YDList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM, MroBsTablesEnum.mroYdBuildMid.getIndex()));
+		YDList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IL, MroBsTablesEnum.mroYdBuildLow.getIndex()));
+		YDList.add(new BuildPosStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IH, MroBsTablesEnum.mroYdBuildPosHigh.getIndex()));
+		YDList.add(new BuildPosStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM, MroBsTablesEnum.mroYdBuildPosMid.getIndex()));
+		YDList.add(new BuildPosStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IL, MroBsTablesEnum.mroYdBuildPosLow.getIndex()));
+		YDList.add(new BuildCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IH, MroBsTablesEnum.mroBuildCellHigh.getIndex()));
+		YDList.add(new BuildCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM, MroBsTablesEnum.mroBuildCellMid.getIndex()));
+		YDList.add(new BuildCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IL, MroBsTablesEnum.mroBuildCellLow.getIndex()));
+		YDList.add(new BuildCellPosStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IH, MroBsTablesEnum.mroBuildCellPosHigh.getIndex()));
+		YDList.add(new BuildCellPosStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM, MroBsTablesEnum.mroBuildCellPosMid.getIndex()));
+		YDList.add(new BuildCellPosStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IL, MroBsTablesEnum.mroBuildCellPosLow.getIndex()));
+		YDList.add(new CellStatDO_4G(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mroYdCell.getIndex()));
+
+		YDList.add(new MrResidentSampleStatDo_4G(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mroResidentSample.getIndex()));
+		YDList.add(new MrSampleStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OH, MroBsTablesEnum.mroOutsampleHigh.getIndex()));
+		YDList.add(new MrSampleStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OM, MroBsTablesEnum.mroOutsampleMid.getIndex()));
+		if (!MainModel.GetInstance().getCompile().Assert(CompileMark.NoLowSample)) {
+			YDList.add(new MrSampleStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OL,
+					MroBsTablesEnum.mroOutsampleLow.getIndex()));
+		}
+		if(MainModel.GetInstance().getCompile().Assert(CompileMark.OutAllSample)){
+			YDList.add(new MrSampleStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.NLoc, MroBsTablesEnum.mroNoLocSample.getIndex()));
+		}
+		YDList.add(new MrSampleStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IH,
+				MroBsTablesEnum.mroInsampleHigh.getIndex()));
+		YDList.add(new MrSampleStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM,
+				MroBsTablesEnum.mroInsampleMid.getIndex()));
+		if (!MainModel.GetInstance().getCompile().Assert(CompileMark.NoLowSample)) {
+			YDList.add(new MrSampleStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IL,
+					MroBsTablesEnum.mroInsampleLow.getIndex()));
+		}
+		if (MainModel.GetInstance().getCompile().Assert(CompileMark.BeiJing)) {
+			YDList.add(
+					new SpecUserMrSampleStatDo_4G(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.vap.getIndex()));
+		}
+//		YDList.add(new MrAreaSampleStatDo_4G(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mroAreaSample.getIndex()));
+		YDList.add(new AreaGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mroYdAreaGrid.getIndex()));
+		YDList.add(new AreaCellGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mroYdAreaGridCell.getIndex()));
+		YDList.add(new AreaCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mroYdAreaCell.getIndex()));
+		YDList.add(new AreaStatDo_4G(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mroYdArea.getIndex()));
+		YDList.add(new UserCellStatDo(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mroUserCell.getIndex()));
+		YDList.add(new ImeiStatDo_4G(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mrImeiYd.getIndex()));
+		// ch add 180410
+		YDList.add(new UserOutCellGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OH,
+				MroBsTablesEnum.mroUserOutgridCellHigh.getIndex()));
+		YDList.add(new UserOutCellGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OM,
+				MroBsTablesEnum.mroUserOutgridCellMid.getIndex()));
+		YDList.add(new UserOutCellGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.OL,
+				MroBsTablesEnum.mroUserOutgridCellLow.getIndex()));
+		YDList.add(new UserInCellGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IH,
+				MroBsTablesEnum.mroUserIngridCellHigh.getIndex()));
+		YDList.add(new UserInCellGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM,
+				MroBsTablesEnum.mroUserIngridCellMid.getIndex()));
+		YDList.add(new UserInCellGridStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IL,
+				MroBsTablesEnum.mroUserIngridCellLow.getIndex()));
+		//常驻用户统计
+		YDList.add(new ResidentStat(typeResult,StaticConfig.SOURCE_YD,MroBsTablesEnum.mroCellResident.getIndex())); 
+		  
+		YDList.add(new BuildPosUserStat(typeResult,StaticConfig.SOURCE_YD, StaticConfig.IH,MroBsTablesEnum.mroBuildPosUserHigh.getIndex()));
+		 
+		YDList.add(new BuildPosUserStat(typeResult,StaticConfig.SOURCE_YD, StaticConfig.IM,MroBsTablesEnum.mroBuildPosUserMid.getIndex()));
+		 
+		YDList.add(new BuildPosUserStat(typeResult,StaticConfig.SOURCE_YD, StaticConfig.IL,MroBsTablesEnum.mroBuildPosUserLow.getIndex()));
+
+		YDList.add(new ResidentCellUserStatHandler(typeResult, StaticConfig.SOURCE_YD, MroBsTablesEnum.mroResidentUserCell.getIndex()));
+
+		//常驻用户（ru）重复吐出一份楼宇表
+		YDList.add(new RuBuildStatDo(Arrays.asList(new IStatDo[]{
+				new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM, MroBsTablesEnum.mroruYdBuildMid.getIndex()),
+				new BuildPosStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM, MroBsTablesEnum.mroruYdBuildPosMid.getIndex()),
+				new BuildCellStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM, MroBsTablesEnum.mroruBuildCellMid.getIndex()),
+				new BuildCellPosStatDo_4G(typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM, MroBsTablesEnum.mroruBuildCellPosMid.getIndex()),
+				new BuildPosUserStat(typeResult,StaticConfig.SOURCE_YD, StaticConfig.IM,MroBsTablesEnum.mroruBuildPosUserMid.getIndex())
+		})));
+		
+		// 添加邻区栅格表
+		if (MainModel.GetInstance().getCompile().Assert(CompileMark.LteNcCellStat)) {
+			for (int i = 0; i < DT_Sample_4G.NCLTE_ARRAY_LENGTH; i++) {
+				YDList.add(new NbInGridCellStatDo_4G(i, typeResult, StaticConfig.SOURCE_YD, StaticConfig.IH,
+						MroBsTablesEnum.mroNbCellInGridHigh.getIndex()));
+				YDList.add(new NbInGridCellStatDo_4G(i, typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM,
+						MroBsTablesEnum.mroNbCellInGridMid.getIndex()));
+				YDList.add(new NbInGridCellStatDo_4G(i, typeResult, StaticConfig.SOURCE_YD, StaticConfig.IL,
+						MroBsTablesEnum.mroNbCellInGridLow.getIndex()));
+				YDList.add(new NbOutGridCellStatDo_4G(i, typeResult, StaticConfig.SOURCE_YD, StaticConfig.OH,
+						MroBsTablesEnum.mroNbCellOutGridHigh.getIndex()));
+				YDList.add(new NbOutGridCellStatDo_4G(i, typeResult, StaticConfig.SOURCE_YD, StaticConfig.OM,
+						MroBsTablesEnum.mroNbCellOutGridMid.getIndex()));
+				YDList.add(new NbOutGridCellStatDo_4G(i, typeResult, StaticConfig.SOURCE_YD, StaticConfig.OL,
+						MroBsTablesEnum.mroNbCellOutGridLow.getIndex()));
+			}
+		}
+		
+		// LT
+		LTList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_LT, StaticConfig.OH, MroBsTablesEnum.mroLtOutgridHigh.getIndex()));
+		LTList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_LT, StaticConfig.OM, MroBsTablesEnum.mroLtOutgridMid.getIndex()));
+		LTList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_LT, StaticConfig.OL, MroBsTablesEnum.mroLtOutgridLow.getIndex()));
+		LTList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_LT, StaticConfig.IH, MroBsTablesEnum.mroLtIngridHigh.getIndex()));
+		LTList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_LT, StaticConfig.IM, MroBsTablesEnum.mroLtIngridMid.getIndex()));
+		LTList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_LT, StaticConfig.IL, MroBsTablesEnum.mroLtIngridLow.getIndex()));
+		LTList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_LT, StaticConfig.IH, MroBsTablesEnum.mroLtBuildHigh.getIndex()));
+		LTList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_LT, StaticConfig.IM, MroBsTablesEnum.mroLtBuildMid.getIndex()));
+		LTList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_LT, StaticConfig.IL, MroBsTablesEnum.mroLtBuildLow.getIndex()));
+		LTList.add(new CellStatDO_4G(typeResult, StaticConfig.SOURCE_LT, MroBsTablesEnum.mroLtCell.getIndex()));
+		LTList.add(new AreaGridStatDo_4G(typeResult, StaticConfig.SOURCE_LT, MroBsTablesEnum.mroLtAreaGrid.getIndex()));
+		LTList.add(new AreaCellStatDo_4G(typeResult, StaticConfig.SOURCE_LT, MroBsTablesEnum.mroLtAreaCell.getIndex()));
+		LTList.add(new AreaStatDo_4G(typeResult, StaticConfig.SOURCE_LT, MroBsTablesEnum.mroLtArea.getIndex()));
+		LTList.add(new ImeiStatDo_4G(typeResult, StaticConfig.SOURCE_LT, MroBsTablesEnum.mrImeiLt.getIndex()));
+
+		//增加异频栅格统计
+		if(MainModel.GetInstance().getCompile().Assert(CompileMark.AllFreq))
+		{
+			for(int index = 0; index < DT_Sample_4G.NCLTE_ARRAY_LENGTH; index++)
+			{
+				YDList.add(new AllFreqInGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_YD, StaticConfig.IH,
+						MroBsTablesEnum.mroYdIngridHighAllFreq.getIndex()));
+				YDList.add(new AllFreqInGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_YD, StaticConfig.IM,
+						MroBsTablesEnum.mroYdIngridMidAllFreq.getIndex()));
+				YDList.add(new AllFreqInGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_YD, StaticConfig.IL,
+						MroBsTablesEnum.mroYdIngridLowAllFreq.getIndex()));
+				YDList.add(new AllFreqOutGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_YD, StaticConfig.OH,
+						MroBsTablesEnum.mroYdOutgridHighAllFreq.getIndex()));
+				YDList.add(new AllFreqOutGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_YD, StaticConfig.OM,
+						MroBsTablesEnum.mroYdOutgridMidAllFreq.getIndex()));
+				YDList.add(new AllFreqOutGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_YD, StaticConfig.OL,
+						MroBsTablesEnum.mroYdOutgridLowAllFreq.getIndex()));
+			}
+			
+			for(int index = 0; index < DT_Sample_4G.LTFREQ_ARRAY_LENGTH; index++)
+			{
+				LTList.add(new AllFreqInGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_LT, StaticConfig.IH,
+						MroBsTablesEnum.mroLtIngridHighAllFreq.getIndex()));
+				LTList.add(new AllFreqInGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_LT, StaticConfig.IM,
+						MroBsTablesEnum.mroLtIngridMidAllFreq.getIndex()));
+				LTList.add(new AllFreqInGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_LT, StaticConfig.IL,
+						MroBsTablesEnum.mroLtIngridLowAllFreq.getIndex()));
+				LTList.add(new AllFreqOutGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_LT, StaticConfig.OH,
+						MroBsTablesEnum.mroLtOutgridHighAllFreq.getIndex()));
+				LTList.add(new AllFreqOutGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_LT, StaticConfig.OM,
+						MroBsTablesEnum.mroLtOutgridMidAllFreq.getIndex()));
+				LTList.add(new AllFreqOutGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_LT, StaticConfig.OL,
+						MroBsTablesEnum.mroLtOutgridLowAllFreq.getIndex()));
+			}
+			
+			for(int index = 0; index < DT_Sample_4G.DXFREQ_ARRAY_LENGTH; index++)
+			{
+				DXList.add(new AllFreqInGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_DX, StaticConfig.IH,
+						MroBsTablesEnum.mroDxIngridHighAllFreq.getIndex()));
+				DXList.add(new AllFreqInGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_DX, StaticConfig.IM,
+						MroBsTablesEnum.mroDxIngridMidAllFreq.getIndex()));
+				DXList.add(new AllFreqInGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_DX, StaticConfig.IL,
+						MroBsTablesEnum.mroDxIngridLowAllFreq.getIndex()));
+				DXList.add(new AllFreqOutGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_DX, StaticConfig.OH,
+						MroBsTablesEnum.mroDxOutgridHighAllFreq.getIndex()));
+				DXList.add(new AllFreqOutGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_DX, StaticConfig.OM,
+						MroBsTablesEnum.mroDxOutgridMidAllFreq.getIndex()));
+				DXList.add(new AllFreqOutGridStatDO_4G(index, typeResult, StaticConfig.SOURCE_DX, StaticConfig.OL,
+						MroBsTablesEnum.mroDxOutgridLowAllFreq.getIndex()));
+			}
+		}
+		
+		// DX
+		DXList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_DX, StaticConfig.OH, MroBsTablesEnum.mroDxOutgridHigh.getIndex()));
+		DXList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_DX, StaticConfig.OM, MroBsTablesEnum.mroDxOutgridMid.getIndex()));
+		DXList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_DX, StaticConfig.OL, MroBsTablesEnum.mroDxOutgridLow.getIndex()));
+		DXList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_DX, StaticConfig.IH, MroBsTablesEnum.mroDxIngridHigh.getIndex()));
+		DXList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_DX, StaticConfig.IM, MroBsTablesEnum.mroDxIngridMid.getIndex()));
+		DXList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_DX, StaticConfig.IL, MroBsTablesEnum.mroDxIngridLow.getIndex()));
+		DXList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_DX, StaticConfig.IH, MroBsTablesEnum.mroDxBuildHigh.getIndex()));
+		DXList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_DX, StaticConfig.IM, MroBsTablesEnum.mroDxBuildMid.getIndex()));
+		DXList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_DX, StaticConfig.IL, MroBsTablesEnum.mroDxBuildLow.getIndex()));
+		DXList.add(new CellStatDO_4G(typeResult, StaticConfig.SOURCE_DX, MroBsTablesEnum.mroDxCell.getIndex()));
+		DXList.add(new AreaGridStatDo_4G(typeResult, StaticConfig.SOURCE_DX, MroBsTablesEnum.mroDxAreaGrid.getIndex()));
+		DXList.add(new AreaCellStatDo_4G(typeResult, StaticConfig.SOURCE_DX, MroBsTablesEnum.mroDxAreaCell.getIndex()));
+		DXList.add(new AreaStatDo_4G(typeResult, StaticConfig.SOURCE_DX, MroBsTablesEnum.mroDxArea.getIndex()));
+		DXList.add(new ImeiStatDo_4G(typeResult, StaticConfig.SOURCE_DX, MroBsTablesEnum.mrImeiDx.getIndex()));
+
+		// YDLT
+		YDLTList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, StaticConfig.OH, MroBsTablesEnum.mroYdltOutgridHigh.getIndex()));
+		YDLTList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, StaticConfig.OM, MroBsTablesEnum.mroYdltOutgridMid.getIndex()));
+		YDLTList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, StaticConfig.OL, MroBsTablesEnum.mroYdltOutgridLow.getIndex()));
+		YDLTList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, StaticConfig.IH, MroBsTablesEnum.mroYdltIngridHigh.getIndex()));
+		YDLTList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, StaticConfig.IM, MroBsTablesEnum.mroYdltIngridMid.getIndex()));
+		YDLTList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, StaticConfig.IL, MroBsTablesEnum.mroYdltIngridLow.getIndex()));
+		YDLTList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, StaticConfig.IH, MroBsTablesEnum.mroYdltBuildingHigh.getIndex()));
+		YDLTList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, StaticConfig.IM, MroBsTablesEnum.mroYdltBuildingMid.getIndex()));
+		YDLTList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, StaticConfig.IL, MroBsTablesEnum.mroYdltBuildingLow.getIndex()));
+		YDLTList.add(new CellStatDO_4G(typeResult, StaticConfig.SOURCE_YDLT, MroBsTablesEnum.mroYdltCell.getIndex()));
+		YDLTList.add(new AreaGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, MroBsTablesEnum.mroYdltAreaGrid.getIndex()));
+		YDLTList.add(new AreaCellStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, MroBsTablesEnum.mroYdltAreaCell.getIndex()));
+		YDLTList.add(new AreaStatDo_4G(typeResult, StaticConfig.SOURCE_YDLT, MroBsTablesEnum.mroYdltArea.getIndex()));
+
+		// YDDX
+		YDDXList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, StaticConfig.OH, MroBsTablesEnum.mroYddxOutgridHigh.getIndex()));
+		YDDXList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, StaticConfig.OM, MroBsTablesEnum.mroYddxOutgridMid.getIndex()));
+		YDDXList.add(new OutGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, StaticConfig.OL, MroBsTablesEnum.mroYddxOutgridLow.getIndex()));
+		YDDXList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, StaticConfig.IH, MroBsTablesEnum.mroYddxIngridHigh.getIndex()));
+		YDDXList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, StaticConfig.IM, MroBsTablesEnum.mroYddxIngridMid.getIndex()));
+		YDDXList.add(new InGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, StaticConfig.IL, MroBsTablesEnum.mroYddxIngridLow.getIndex()));
+		YDDXList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, StaticConfig.IH, MroBsTablesEnum.mroYddxBuildingHigh.getIndex()));
+		YDDXList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, StaticConfig.IM, MroBsTablesEnum.mroYddxBuildingMid.getIndex()));
+		YDDXList.add(new BuildStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, StaticConfig.IL, MroBsTablesEnum.mroYddxBuildingLow.getIndex()));
+		
+		YDDXList.add(new CellStatDO_4G(typeResult, StaticConfig.SOURCE_YDDX, MroBsTablesEnum.mroYddxCell.getIndex()));
+		YDDXList.add(new AreaGridStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, MroBsTablesEnum.mroYddxAreaGrid.getIndex()));
+		YDDXList.add(new AreaCellStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, MroBsTablesEnum.mroYddxAreaCell.getIndex()));
+		YDDXList.add(new AreaStatDo_4G(typeResult, StaticConfig.SOURCE_YDDX, MroBsTablesEnum.mroYddxArea.getIndex()));
+
+		// 默认添加 YD,LT,DX
+		dealList.add(new DayDataDeal_4G(new CompositeStatDo(YDList)));
+		dealList.add(new DayDataDeal_4G(new CompositeStatDo(LTList)));
+		dealList.add(new DayDataDeal_4G(new CompositeStatDo(DXList)));
+		dealList.add(new DayDataDeal_4G(new CompositeStatDo(YDLTList)) {
+			@Override
+			public void dealSample(DT_Sample_4G sample) {
+				// fullNetType说明： 0=LT/DX都不支持；1=DX支持；2=LT支持；3=LT/DX都支持
+				if ((sample.fullNetType & 2) > 0) {
+					super.dealSample(sample);
+				}
+			}
+		});
+		dealList.add(new DayDataDeal_4G(new CompositeStatDo(YDDXList)) {
+			@Override
+			public void dealSample(DT_Sample_4G sample) {
+				// fullNetType说明： 0=LT/DX都不支持；1=DX支持；2=LT支持；3=LT/DX都支持
+				if ((sample.fullNetType & 1) > 0) {
+					super.dealSample(sample);
+				}
+			}
+		});
+	}
+
+	public void dealSample(DT_Sample_4G sample) {
+		// if (sample.itime == 0)
+		// {
+		// return;
+		// }
+		for (DayDataDeal_4G deal : dealList) {
+			deal.dealSample(sample);
+		}
+	}
+
+	public void dealSample(DT_Sample_23G sample) {
+		if (sample.itime == 0) {
+			return;
+		}
+	}
+
+	public int outResult() {
+		for (DayDataDeal_4G deal : dealList) {
+			deal.outResult();
+		}
+
+		return 0;
+	}
+
+}

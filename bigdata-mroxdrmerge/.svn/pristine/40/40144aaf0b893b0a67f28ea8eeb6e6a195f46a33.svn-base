@@ -1,0 +1,156 @@
+package cn.mastercom.bigdata.stat.userResident.buildIndoorCell;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import cn.mastercom.bigdata.stat.userResident.buildIndoorCell.ids.IDSUserOutputerUtil;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Text;
+
+import cn.mastercom.bigdata.StructData.StaticConfig;
+import cn.mastercom.bigdata.conf.cellconfig.CellConfig;
+import cn.mastercom.bigdata.conf.cellconfig.LteCellInfo;
+import cn.mastercom.bigdata.stat.userResident.enmus.BuildIndoorCellTablesEnum;
+import cn.mastercom.bigdata.stat.userResident.enmus.ResidentUserTablesEnum;
+import cn.mastercom.bigdata.stat.userResident.homeBroadbandLoc.NewResidentUser;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.ResultOutputer;
+
+public class BuildIndoorCellDeal
+{
+	
+	private ResultOutputer resultOutputer;
+	public BuildIndoorCellDeal(ResultOutputer resultOutputer, Configuration conf) throws Exception
+	{
+		this.resultOutputer = resultOutputer;
+		// 初始化lte小区的信息
+		if (!CellConfig.GetInstance().loadLteCell(conf))
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "ltecell init error 请检查！" + CellConfig.GetInstance().errLog);
+			throw (new IOException("ltecell init error 请检查！"));
+		}
+	}
+
+	public void deal(BuildIndoorCellKey key, Iterable<Text> values)
+	{
+		HashMap<String, ArrayList<NewResidentUser>> residentUserHeightMap = new HashMap<>();
+		HashMap<String, ArrayList<NewResidentUser>> residentUserPositionMap = new HashMap<>();
+		HashMap<Long, BuildIndoorCellUser> buildHeightCellMap = new HashMap<>();
+		HashMap<Long, BuildIndoorCellUser> buildHeightPosCellMap = new HashMap<>();
+		for (Text text : values)
+		{
+			try {
+					String[] str = text.toString().split("\t", -1);
+					NewResidentUser residentUser = new NewResidentUser();
+					residentUser.fillMergeData(str);
+					String heightKey = residentUser.cityID + "_" + residentUser.height;
+					dealResidentUser(heightKey, residentUser, residentUserHeightMap);
+					
+					String heightPositionKey = heightKey + "_" + residentUser.position;
+					dealResidentUser(heightPositionKey, residentUser, residentUserPositionMap);
+
+					IDSUserOutputerUtil.getInstance().addResidentUser(residentUser);
+				}
+				catch (Exception e)
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error,"BuildIndoorCellDeal value err", "BuildIndoorCellDeal value err ", e);
+				}
+		}
+		IDSUserOutputerUtil.getInstance().outputDataOrContinue(resultOutputer);
+		
+		dealResidentUserMap(residentUserHeightMap, buildHeightCellMap);
+		dealResidentUserMap(residentUserPositionMap, buildHeightPosCellMap);
+		
+		for (BuildIndoorCellUser temp : buildHeightCellMap.values())
+		{
+			saveFile(temp);
+		}
+		
+		for (BuildIndoorCellUser temp : buildHeightPosCellMap.values())
+		{
+			savePosFile(temp);
+		}
+			
+	}
+	
+	public void dealResidentUser(String key, NewResidentUser residentUser, HashMap<String, ArrayList<NewResidentUser>> residentUserMap)
+	{
+		ArrayList<NewResidentUser> residentUserList = residentUserMap.get(key);
+		if (residentUserList == null)
+		{
+			residentUserList = new ArrayList<>();
+			residentUserList.add(residentUser);
+			residentUserMap.put(key, residentUserList);
+		}
+		else
+		{
+			boolean Ionce = false;
+			for (NewResidentUser temp : residentUserList)
+			{
+				if (residentUser.imsi == temp.imsi)
+				{
+					Ionce = true;
+					break;
+				}
+			}
+			if (!Ionce)
+			{
+				residentUserList.add(residentUser);
+			}
+		}
+	}
+	
+	public void dealResidentUserMap(HashMap<String, ArrayList<NewResidentUser>> residentUserMap, HashMap<Long, BuildIndoorCellUser> buildMap)
+	{
+		for (String height : residentUserMap.keySet())
+		{
+			ArrayList<NewResidentUser> tempResidentUserList = residentUserMap.get(height);
+			for(NewResidentUser temp : tempResidentUserList)
+			{
+				BuildIndoorCellUser buildIndoorCellUser = new BuildIndoorCellUser();
+				buildIndoorCellUser.fillData(temp);
+				buildIndoorCellUser.userCnt = tempResidentUserList.size();
+				LteCellInfo cellInfo = CellConfig.GetInstance().getLteCell(buildIndoorCellUser.eci);
+				if(cellInfo != null && cellInfo.indoor == StaticConfig.INCOVER)
+				{
+					long mapKey = buildIndoorCellUser.eci;
+					BuildIndoorCellUser tempBuildIndoorCellUser = buildMap.get(mapKey);
+					if(tempBuildIndoorCellUser == null)
+					{
+						tempBuildIndoorCellUser = buildIndoorCellUser;
+						buildMap.put(mapKey, buildIndoorCellUser);
+					}
+					tempBuildIndoorCellUser.updateNum(buildIndoorCellUser);
+				}
+			}
+		}
+	}
+	
+	//吐出楼宇楼层室分用户数配置表
+	public void saveFile(BuildIndoorCellUser buildIndoorCellUser)
+	{
+		try {
+				resultOutputer.pushData(BuildIndoorCellTablesEnum.Build_Indoor_Cell.getIndex(), buildIndoorCellUser.toString());
+				resultOutputer.pushData(ResidentUserTablesEnum.Build_Indoor_Cell.getIndex(), buildIndoorCellUser.toString());
+			}
+			catch (Exception e)
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error,"buildIndoorCellUser save err", "buildIndoorCellUser save err ", e);
+			}
+	}
+	
+	//吐出楼宇楼层方位室分用户数配置表
+	public void savePosFile(BuildIndoorCellUser buildIndoorCellUser)
+	{
+		try {
+				resultOutputer.pushData(BuildIndoorCellTablesEnum.Build_pos_Indoor_Cell.getIndex(), buildIndoorCellUser.toLine());
+				resultOutputer.pushData(ResidentUserTablesEnum.Build_pos_Indoor_Cell.getIndex(), buildIndoorCellUser.toLine());
+			}
+			catch (Exception e)
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error,"buildPosIndoorCellUser save err", "buildPosIndoorCellUser save err ", e);
+			}
+	}
+}

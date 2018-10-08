@@ -1,0 +1,275 @@
+package cn.mastercom.bigdata.mro.stat.struct;
+
+import cn.mastercom.bigdata.StructData.DT_Sample_4G;
+import cn.mastercom.bigdata.StructData.StaticConfig;
+import cn.mastercom.bigdata.util.*;
+
+import java.io.Serializable;
+
+public class StatResidentCellUser implements IStat_4G, Serializable {
+
+    private int iCityID;
+    private long imsi;
+    private String MSISDN;
+    private long iECI;
+    private int iTime;
+    private int iMRCnt;
+    private int iMRRSRQCnt;
+    private int iMRSINRCnt;
+    private float fRSRPValue;
+    private float fRSRQValue;
+    private float fSINRValue;
+    private int iMRCnt_95;
+    private int iMRCnt_100;
+    private int iMRCnt_103;
+    private int iMRCnt_105;
+    private int iMRCnt_110;
+    private int iMRCnt_113;
+    private int iMRCnt_128;
+    private int iRSRP100_SINR0;
+    private int iRSRP105_SINR0;
+    private int iRSRP110_SINR3;
+    private int iRSRP110_SINR0;
+    private int iSINR_0;
+    private int iRSRQ_14;
+    private float fOverlapSameEarfcnTotal;
+    private int iOverlapSameEarfcnMRCnt;
+    private float fOverlapTotalAll;
+    private int iOverlapMRCntAll;
+    private float fRSRPMax = StaticConfig.Int_Abnormal;
+    private float fRSRPMin = - StaticConfig.Int_Abnormal;
+    private float fRSRQMax = StaticConfig.Int_Abnormal;
+    private float fRSRQMin = - StaticConfig.Int_Abnormal;
+    private float fSINRMax = StaticConfig.Int_Abnormal;
+    private float fSINRMin = - StaticConfig.Int_Abnormal;
+
+    private boolean isFirst = true;
+
+    @Override
+    public void doSample(DT_Sample_4G sample) {
+        firstDo(sample);
+        add(sample);
+    }
+    public void firstDo(DT_Sample_4G sample) {
+        if (isFirst) {
+            iCityID = sample.cityID;
+            imsi = sample.IMSI;
+            MSISDN = sample.MSISDN;
+            iECI = sample.Eci;
+            iTime = FormatTime.RoundTimeForHour(sample.itime);
+            isFirst = false;
+        }
+    }
+    private void add(DT_Sample_4G sample) {
+        iMRCnt ++;
+        fRSRPValue += sample.LteScRSRP;
+        if (sample.LteScRSRP < fRSRPMin) {
+            fRSRPMin = sample.LteScRSRP;
+        }
+        if (sample.LteScRSRP > fRSRPMax) {
+            fRSRPMax = sample.LteScRSRP;
+        }
+        if (sample.LteScRSRP >= -95) {
+            iMRCnt_95 ++;
+        }
+        if (sample.LteScRSRP >= -100) {
+            iMRCnt_100 ++;
+        }
+        if (sample.LteScRSRP >= -103) {
+            iMRCnt_103 ++;
+        }
+        if (sample.LteScRSRP >= -105) {
+            iMRCnt_105 ++;
+        }
+        if (sample.LteScRSRP >= -110) {
+            iMRCnt_110 ++;
+        }
+        if (sample.LteScRSRP >= -113) {
+            iMRCnt_113 ++;
+        }
+        if (sample.LteScRSRP >= -128) {
+            iMRCnt_128 ++;
+        }
+
+        if (sample.LteScRSRQ > -10000) {
+            iMRRSRQCnt ++;
+            fRSRQValue += sample.LteScRSRQ;
+            if (sample.LteScRSRQ > fRSRQMax) {
+                fRSRQMax = sample.LteScRSRQ;
+            }
+            if (sample.LteScRSRQ < fRSRQMin) {
+                fRSRQMin = sample.LteScRSRQ;
+            }
+        }
+
+        if (sample.LteScSinrUL >= -1000 && sample.LteScSinrUL <= 1000) {
+            iMRSINRCnt ++;
+            fSINRValue += sample.LteScSinrUL;
+            if (sample.LteScSinrUL > fSINRMax) {
+                fSINRMax = sample.LteScSinrUL;
+            }
+            if (sample.LteScSinrUL < fSINRMin) {
+                fSINRMin = sample.LteScSinrUL;
+            }
+        }
+
+        if ((sample.LteScRSRP >= -100) && (sample.LteScSinrUL >= 0)) {
+            iRSRP100_SINR0 ++;
+        }
+        if ((sample.LteScRSRP >= -105) && (sample.LteScSinrUL >= 0)) {
+            iRSRP105_SINR0 ++;
+        }
+        if ((sample.LteScRSRP >= -110) && (sample.LteScSinrUL >= 3)) {
+            iRSRP110_SINR3 ++;
+        }
+        if ((sample.LteScRSRP >= -110) && (sample.LteScSinrUL >= 0)) {
+            iRSRP110_SINR0 ++;
+        }
+        if (sample.LteScSinrUL >= 0) {
+            iSINR_0 ++;
+        }
+        if (sample.LteScSinrUL >= -14) {
+            iRSRQ_14 ++;
+        }
+
+        fOverlapSameEarfcnTotal += sample.overlapSameEarfcn;
+        if (sample.overlapSameEarfcn >= 4) {
+            iOverlapSameEarfcnMRCnt ++;
+        }
+        fOverlapTotalAll += sample.OverlapAll;
+        if (sample.OverlapAll >= 4) {
+            iOverlapMRCntAll ++;
+        }
+    }
+
+    public String mapKey() {
+        return iCityID + "_" + imsi + "_" + MSISDN + "_" + iECI + "_" + iTime;
+    }
+
+    @Override
+    public void doSampleLT(DT_Sample_4G sample) {
+        doSample(sample);
+    }
+
+    @Override
+    public void doSampleDX(DT_Sample_4G sample) {
+        doSample(sample);
+    }
+
+    private static final String spliter = "\t";
+    @Override
+    public String toLine() {
+        if (isFirst) {
+            return null;
+        }
+        return iCityID + spliter +
+                Func.getEncrypt(imsi) + spliter +
+                MSISDN + spliter +
+                iECI + spliter +
+                iTime + spliter +
+                iMRCnt + spliter +
+                iMRRSRQCnt + spliter +
+                iMRSINRCnt + spliter +
+                fRSRPValue + spliter +
+                fRSRQValue + spliter +
+                fSINRValue + spliter +
+                iMRCnt_95 + spliter +
+                iMRCnt_100 + spliter +
+                iMRCnt_103 + spliter +
+                iMRCnt_105 + spliter +
+                iMRCnt_110 + spliter +
+                iMRCnt_113 + spliter +
+                iMRCnt_128 + spliter +
+                iRSRP100_SINR0 + spliter +
+                iRSRP105_SINR0 + spliter +
+                iRSRP110_SINR3 + spliter +
+                iRSRP110_SINR0 + spliter +
+                iSINR_0 + spliter +
+                iRSRQ_14 + spliter +
+                fOverlapSameEarfcnTotal + spliter +
+                iOverlapSameEarfcnMRCnt + spliter +
+                fOverlapTotalAll + spliter +
+                iOverlapMRCntAll + spliter +
+                fRSRPMax + spliter +
+                fRSRPMin + spliter +
+                fRSRQMax + spliter +
+                fRSRQMin + spliter +
+                fSINRMax + spliter +
+                fSINRMin;
+    }
+
+    public void merge(StatResidentCellUser another) {
+        iMRCnt += another.iMRCnt;
+        iMRRSRQCnt += another.iMRRSRQCnt;
+        iMRSINRCnt += another.iMRSINRCnt;
+        fRSRPValue += another.fRSRPValue;
+        fRSRQValue += another.fRSRQValue;
+        fSINRValue += another.fSINRValue;
+        iMRCnt_95 += another.iMRCnt_95;
+        iMRCnt_100 += another.iMRCnt_100;
+        iMRCnt_103 += another.iMRCnt_103;
+        iMRCnt_105 += another.iMRCnt_105;
+        iMRCnt_110 += another.iMRCnt_110;
+        iMRCnt_113 += another.iMRCnt_113;
+        iMRCnt_128 += another.iMRCnt_128;
+        iRSRP100_SINR0 += another.iRSRP100_SINR0;
+        iRSRP105_SINR0 += another.iRSRP105_SINR0;
+        iRSRP110_SINR3 += another.iRSRP110_SINR3;
+        iRSRP110_SINR0 += another.iRSRP110_SINR0;
+        iSINR_0 += another.iSINR_0;
+        iRSRQ_14 += another.iRSRQ_14;
+        fOverlapSameEarfcnTotal += another.fOverlapSameEarfcnTotal;
+        iOverlapSameEarfcnMRCnt += another.iOverlapSameEarfcnMRCnt;
+        fOverlapTotalAll += another.fOverlapTotalAll;
+        iOverlapMRCntAll += another.iOverlapMRCntAll;
+        fRSRPMax = Math.max(this.fRSRPMax, another.fRSRPMax);
+        fRSRPMin = Math.min(this.fRSRPMin, another.fRSRPMin);
+        fRSRQMax = Math.max(this.fRSRQMax, another.fRSRQMax);
+        fRSRQMin = Math.min(this.fRSRQMin, another.fRSRQMin);
+        fSINRMax = Math.max(this.fSINRMax, another.fSINRMax);
+        fSINRMin = Math.min(this.fSINRMin, another.fSINRMin);
+    }
+
+    public StatResidentCellUser fill(String[] values) {
+        int i = 0;
+
+        iCityID = Integer.parseInt(values[i++]);
+        imsi = Long.parseLong(values[i++]);
+        iECI = Long.parseLong(values[i++]);
+        iTime = TimeHelper.getRoundDayTime(Integer.parseInt(values[i++]));
+        iMRCnt = Integer.parseInt(values[i++]);
+        iMRRSRQCnt = Integer.parseInt(values[i++]);
+        iMRSINRCnt = Integer.parseInt(values[i++]);
+
+        fRSRPValue = Float.parseFloat(values[i++]);
+        fRSRQValue = Float.parseFloat(values[i++]);
+        fSINRValue = Float.parseFloat(values[i++]);
+        iMRCnt_95 = Integer.parseInt(values[i++]);
+        iMRCnt_100 = Integer.parseInt(values[i++]);
+        iMRCnt_103 = Integer.parseInt(values[i++]);
+        iMRCnt_105 = Integer.parseInt(values[i++]);
+        iMRCnt_110 = Integer.parseInt(values[i++]);
+        iMRCnt_113 = Integer.parseInt(values[i++]);
+        iMRCnt_128 = Integer.parseInt(values[i++]);
+        iRSRP100_SINR0 = Integer.parseInt(values[i++]);
+        iRSRP105_SINR0 = Integer.parseInt(values[i++]);
+        iRSRP110_SINR3 = Integer.parseInt(values[i++]);
+        iRSRP110_SINR0 = Integer.parseInt(values[i++]);
+        iSINR_0 = Integer.parseInt(values[i++]);
+        iRSRQ_14 = Integer.parseInt(values[i++]);
+        fOverlapSameEarfcnTotal = Float.parseFloat(values[i++]);
+        iOverlapSameEarfcnMRCnt = Integer.parseInt(values[i++]);
+        fOverlapTotalAll = Float.parseFloat(values[i++]);
+        iOverlapMRCntAll = Integer.parseInt(values[i++]);
+        fRSRPMax = Float.parseFloat(values[i++]);
+        fRSRPMin = Float.parseFloat(values[i++]);
+        fRSRQMax = Float.parseFloat(values[i++]);
+        fRSRQMin = Float.parseFloat(values[i++]);
+        fSINRMax = Float.parseFloat(values[i++]);
+        fSINRMin = Float.parseFloat(values[i]);
+
+        isFirst = false;
+
+        return this;
+    }
+}

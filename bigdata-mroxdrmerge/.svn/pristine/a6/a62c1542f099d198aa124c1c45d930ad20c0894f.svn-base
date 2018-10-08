@@ -1,0 +1,345 @@
+package cn.mastercom.bigdata.mro.stat.struct;
+
+import java.io.Serializable;
+
+import cn.mastercom.bigdata.StructData.DT_Sample_4G;
+import cn.mastercom.bigdata.StructData.StaticConfig;
+import cn.mastercom.bigdata.util.FormatTime;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.TimeHelper;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+
+public class Scene_Cell extends Stat_Cell implements IStat_4G,Serializable
+{
+	public int iAreaType;
+	public int iAreaID;
+
+	public static final String spliter = "\t";
+
+	public void doFirstSample(DT_Sample_4G sample)
+	{
+		iCityID = sample.cityID;
+		iAreaType = sample.iAreaType;
+		iAreaID = sample.iAreaID;
+		iECI = (int) sample.Eci;
+		iTime = FormatTime.RoundTimeForHour(sample.itime);
+	}
+
+	public void doSample(DT_Sample_4G sample)
+	{
+		doSample(sample.LteScRSRP, sample.LteScRSRQ, sample.LteScSinrUL, sample.overlapSameEarfcn, sample.OverlapAll);
+	}
+
+	public void doSampleLT(DT_Sample_4G sample)
+	{
+		doSample(sample.lt_freq[0].LteNcRSRP, sample.lt_freq[0].LteNcRSRQ, StaticConfig.Int_Abnormal, sample.overlapSameEarfcn,
+				sample.OverlapAll);
+	}
+
+	public void doSampleDX(DT_Sample_4G sample)
+	{
+		doSample(sample.dx_freq[0].LteNcRSRP, sample.dx_freq[0].LteNcRSRQ, StaticConfig.Int_Abnormal, sample.overlapSameEarfcn,
+				sample.OverlapAll);
+	}
+
+	public void doSample(int rsrp, int rsrq, int sinrul, int Overlap, int OverlapAll)
+	{
+		if (rsrp >= -150 && rsrp <= -30)
+		{
+			iMRCnt++;
+
+			fRSRPValue += rsrp;
+
+			iMRCnt_Outdoor++;
+
+			fRSRPValue_Outdoor += rsrp;
+
+			if (rsrp >= -70 && rsrp < 0)
+			{
+				iMRCnt_Outdoor_0_70++;
+			}
+			else if (rsrp >= -80 && rsrp < -70)
+			{
+				iMRCnt_Outdoor_70_80++;
+			}
+			else if (rsrp >= -90 && rsrp < -80)
+			{
+				iMRCnt_Outdoor_80_90++;
+			}
+			else if (rsrp >= -95 && rsrp < -90)
+			{
+				iMRCnt_Outdoor_90_95++;
+			}
+
+			if (rsrp >= -100 && rsrp < 0)
+			{
+				iMRCnt_Outdoor_100++;
+				if (sinrul >= 0)
+				{
+					iOutdoorRSRP100_SINR0++;
+				}
+			}
+			if (rsrp >= -103 && rsrp < 0)
+			{
+				iMRCnt_Outdoor_103++;
+			}
+			if (rsrp >= -105 && rsrp < 0)
+			{
+				iMRCnt_Outdoor_105++;
+				if (sinrul >= 0)
+				{
+					iOutdoorRSRP105_SINR0++;
+				}
+			}
+			if (rsrp >= -110 && rsrp < 0)
+			{
+				iMRCnt_Outdoor_110++;
+				if (sinrul >= 3)
+				{
+					iOutdoorRSRP110_SINR3++;
+				}
+				if (sinrul >= 0)
+				{
+					iOutdoorRSRP110_SINR0++;
+				}
+			}
+			if (rsrp >= -113 && rsrp < 0)
+			{
+				iMRCnt_Outdoor_113++;
+			}
+		}
+
+		if (rsrq >-10000)
+		{
+			iMRRSRQCnt++;
+			fRSRQValue += rsrq;
+
+			iMRRSRQCnt_Outdoor++;
+			fRSRQValue_Outdoor += rsrq;
+
+			if (rsrq > -14)
+			{
+				iRSRQ_Outdoor_14++;
+			}
+		}
+
+		if (sinrul >= -1000 && sinrul <= 1000)
+		{
+			iMRSINRCnt++;
+			fSINRValue += sinrul;
+
+			iMRSINRCnt_Outdoor++;
+			fSINRValue_Outdoor += sinrul;
+
+			if (sinrul >= 0)
+			{
+				iSINR_Outdoor_0++;
+			}
+
+			fOverlapTotal += Overlap;
+			if (Overlap >= 4)
+			{
+				iOverlapMRCnt++;
+			}
+			fOverlapTotalAll += OverlapAll;
+			if (OverlapAll >= 4)
+			{
+				iOverlapMRCntAll++;
+			}
+		}
+	}
+
+	public String toLine()
+	{
+		StringBuffer bf = new StringBuffer();
+		bf.append(iCityID);
+		bf.append(spliter);
+		bf.append(iAreaType);
+		bf.append(spliter);
+		bf.append(iAreaID);
+		bf.append(spliter);
+		bf.append(iECI);
+		bf.append(spliter);
+		bf.append(iTime);
+		bf.append(spliter);
+		bf.append(iMRCnt);
+		bf.append(spliter);
+		bf.append(iMRCnt_Indoor);
+		bf.append(spliter);
+		bf.append(iMRCnt_Outdoor);
+		bf.append(spliter);
+		bf.append(iMRRSRQCnt);
+		bf.append(spliter);
+		bf.append(iMRRSRQCnt_Indoor);
+		bf.append(spliter);
+		bf.append(iMRRSRQCnt_Outdoor);
+		bf.append(spliter);
+		bf.append(iMRSINRCnt);
+		bf.append(spliter);
+		bf.append(iMRSINRCnt_Indoor);
+		bf.append(spliter);
+		bf.append(iMRSINRCnt_Outdoor);
+		bf.append(spliter);
+		bf.append(fRSRPValue);
+		bf.append(spliter);
+		bf.append(fRSRPValue_Indoor);
+		bf.append(spliter);
+		bf.append(fRSRPValue_Outdoor);
+		bf.append(spliter);
+		bf.append(fRSRQValue);
+		bf.append(spliter);
+		bf.append(fRSRQValue_Indoor);
+		bf.append(spliter);
+		bf.append(fRSRQValue_Outdoor);
+		bf.append(spliter);
+		bf.append(fSINRValue);
+		bf.append(spliter);
+		bf.append(fSINRValue_Indoor);
+		bf.append(spliter);
+		bf.append(fSINRValue_Outdoor);
+		bf.append(spliter);
+		bf.append(iMRCnt_Indoor_0_70);
+		bf.append(spliter);
+		bf.append(iMRCnt_Indoor_70_80);
+		bf.append(spliter);
+		bf.append(iMRCnt_Indoor_80_90);
+		bf.append(spliter);
+		bf.append(iMRCnt_Indoor_90_95);
+		bf.append(spliter);
+		bf.append(iMRCnt_Indoor_100);
+		bf.append(spliter);
+		bf.append(iMRCnt_Indoor_103);
+		bf.append(spliter);
+		bf.append(iMRCnt_Indoor_105);
+		bf.append(spliter);
+		bf.append(iMRCnt_Indoor_110);
+		bf.append(spliter);
+		bf.append(iMRCnt_Indoor_113);
+		bf.append(spliter);
+		bf.append(iMRCnt_Outdoor_0_70);
+		bf.append(spliter);
+		bf.append(iMRCnt_Outdoor_70_80);
+		bf.append(spliter);
+		bf.append(iMRCnt_Outdoor_80_90);
+		bf.append(spliter);
+		bf.append(iMRCnt_Outdoor_90_95);
+		bf.append(spliter);
+		bf.append(iMRCnt_Outdoor_100);
+		bf.append(spliter);
+		bf.append(iMRCnt_Outdoor_103);
+		bf.append(spliter);
+		bf.append(iMRCnt_Outdoor_105);
+		bf.append(spliter);
+		bf.append(iMRCnt_Outdoor_110);
+		bf.append(spliter);
+		bf.append(iMRCnt_Outdoor_113);
+		bf.append(spliter);
+		bf.append(iIndoorRSRP100_SINR0);
+		bf.append(spliter);
+		bf.append(iIndoorRSRP105_SINR0);
+		bf.append(spliter);
+		bf.append(iIndoorRSRP110_SINR3);
+		bf.append(spliter);
+		bf.append(iIndoorRSRP110_SINR0);
+		bf.append(spliter);
+		bf.append(iOutdoorRSRP100_SINR0);
+		bf.append(spliter);
+		bf.append(iOutdoorRSRP105_SINR0);
+		bf.append(spliter);
+		bf.append(iOutdoorRSRP110_SINR3);
+		bf.append(spliter);
+		bf.append(iOutdoorRSRP110_SINR0);
+		bf.append(spliter);
+		bf.append(iSINR_Indoor_0);
+		bf.append(spliter);
+		bf.append(iRSRQ_Indoor_14);
+		bf.append(spliter);
+		bf.append(iSINR_Outdoor_0);
+		bf.append(spliter);
+		bf.append(iRSRQ_Outdoor_14);
+		bf.append(spliter);
+		bf.append(fOverlapTotal);
+		bf.append(spliter);
+		bf.append(iOverlapMRCnt);
+		bf.append(spliter);
+		bf.append(fOverlapTotalAll);
+		bf.append(spliter);
+		bf.append(iOverlapMRCntAll);
+		return bf.toString();
+	}
+
+	public static Scene_Cell FillData(String[] vals, int pos)
+	{
+		int i = pos;
+		Scene_Cell cell = new Scene_Cell();
+		
+		try
+		{
+			cell.iCityID = Integer.parseInt(vals[i++]);
+			cell.iAreaType = Integer.parseInt(vals[i++]);
+			cell.iAreaID = Integer.parseInt(vals[i++]);
+			cell.iECI = Integer.parseInt(vals[i++]);
+			cell.iTime = TimeHelper.getRoundDayTime(Integer.parseInt(vals[i++]));
+			cell.iMRCnt = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Indoor = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Outdoor = Integer.parseInt(vals[i++]);
+			cell.iMRRSRQCnt = Integer.parseInt(vals[i++]);
+			cell.iMRRSRQCnt_Indoor = Integer.parseInt(vals[i++]);
+			cell.iMRRSRQCnt_Outdoor = Integer.parseInt(vals[i++]);
+			cell.iMRSINRCnt = Integer.parseInt(vals[i++]);
+			cell.iMRSINRCnt_Indoor = Integer.parseInt(vals[i++]);
+			cell.iMRSINRCnt_Outdoor = Integer.parseInt(vals[i++]);
+
+			cell.fRSRPValue = Float.parseFloat(vals[i++]);
+			cell.fRSRPValue_Indoor = Float.parseFloat(vals[i++]);
+			cell.fRSRPValue_Outdoor = Float.parseFloat(vals[i++]);
+			cell.fRSRQValue = Float.parseFloat(vals[i++]);
+			cell.fRSRQValue_Indoor = Float.parseFloat(vals[i++]);
+			cell.fRSRQValue_Outdoor = Float.parseFloat(vals[i++]);
+			cell.fSINRValue = Float.parseFloat(vals[i++]);
+			cell.fSINRValue_Indoor = Float.parseFloat(vals[i++]);
+			cell.fSINRValue_Outdoor = Float.parseFloat(vals[i++]);
+
+			cell.iMRCnt_Indoor_0_70 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Indoor_70_80 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Indoor_80_90 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Indoor_90_95 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Indoor_100 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Indoor_103 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Indoor_105 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Indoor_110 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Indoor_113 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Outdoor_0_70 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Outdoor_70_80 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Outdoor_80_90 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Outdoor_90_95 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Outdoor_100 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Outdoor_103 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Outdoor_105 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Outdoor_110 = Integer.parseInt(vals[i++]);
+			cell.iMRCnt_Outdoor_113 = Integer.parseInt(vals[i++]);
+			cell.iIndoorRSRP100_SINR0 = Integer.parseInt(vals[i++]);
+			cell.iIndoorRSRP105_SINR0 = Integer.parseInt(vals[i++]);
+			cell.iIndoorRSRP110_SINR3 = Integer.parseInt(vals[i++]);
+			cell.iIndoorRSRP110_SINR0 = Integer.parseInt(vals[i++]);
+			cell.iOutdoorRSRP100_SINR0 = Integer.parseInt(vals[i++]);
+			cell.iOutdoorRSRP105_SINR0 = Integer.parseInt(vals[i++]);
+			cell.iOutdoorRSRP110_SINR3 = Integer.parseInt(vals[i++]);
+			cell.iOutdoorRSRP110_SINR0 = Integer.parseInt(vals[i++]);
+			cell.iSINR_Indoor_0 = Integer.parseInt(vals[i++]);
+			cell.iRSRQ_Indoor_14 = Integer.parseInt(vals[i++]);
+			cell.iSINR_Outdoor_0 = Integer.parseInt(vals[i++]);
+			cell.iRSRQ_Outdoor_14 = Integer.parseInt(vals[i++]);
+			cell.fOverlapTotal = Float.parseFloat(vals[i++]);
+			cell.iOverlapMRCnt = Integer.parseInt(vals[i++]);
+			cell.fOverlapTotalAll = Float.parseFloat(vals[i++]);
+			cell.iOverlapMRCntAll = Integer.parseInt(vals[i++]);
+		}
+		catch (Exception e)
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "", e);
+		}
+		return cell;
+	}
+
+}

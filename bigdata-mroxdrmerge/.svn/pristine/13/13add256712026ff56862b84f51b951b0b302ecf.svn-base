@@ -1,0 +1,135 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<configuration>
+	<LteCellConfigPath>/wangyou/mingtong/mt_wlyh/Data/config/tb_cfg_city_cell.txt</LteCellConfigPath>
+	<MreDataPath>/wangyou/mingtong/mt_wlyh/Data/mre/${yyMMdd}</MreDataPath>
+	<MroXdrMergePath>/wangyou/mingtong/mt_wlyh/Data/mroxdrmerge</MroXdrMergePath>
+	<MroDataPath>/OSSDATA/MR/MRO</MroDataPath>
+	<MTMroDataPath>/OSSDATA/MR/MRO/${yyyyMMdd}/[0-9][0-9]</MTMroDataPath>
+	<OrigLocationPath>/flume/location</OrigLocationPath>
+	<PigBinPath>/opt/pig-0.15.0/bin</PigBinPath>
+	<OrigXdrPath>/flume/xdr</OrigXdrPath>
+	<XdrDataPath>/result/test</XdrDataPath>
+	<ClientPort>2181</ClientPort>
+	<ZookeeperQuorum>gx-batch-dn-15,gx-batch-dn-09</ZookeeperQuorum>
+	<ZondeParent>/hbase-unsecure</ZondeParent>
+	<HbaseTmpDir>/wangyou/mingtong/mt_wlyh/tmp/hbase-staging</HbaseTmpDir>
+	<cellBuildTable>ns_wangyou:cell_build_grid_GuangXi</cellBuildTable>
+	<configSimuOutTable>ns_wangyou:simu_out_GuangXi</configSimuOutTable>
+	<configSimuIninTable>ns_wangyou:simu_inin_GuangXi</configSimuIninTable>
+	<configSimuInoutTable>ns_wangyou:simu_inout_GuangXi</configSimuInoutTable>
+	<configSimuIndoorTable>ns_wangyou:simu_indoor_GuangXi</configSimuIndoorTable>
+	<configSimuNcellTable>ns_wangyou:simu_ncell_GuangXi</configSimuNcellTable>
+	<GsmCellConfigPath>/wangyou/mingtong/mt_wlyh/Data/config/tb_cfg_city_cell_gsm.txt</GsmCellConfigPath>
+	<TDCellConfigPath>/wangyou/mingtong/mt_wlyh/Data/config/tb_cfg_city_cell_td.txt</TDCellConfigPath>
+	<!-- redis配置 -->
+	<redisConfig>10.182.26.195:6379,10.182.26.196:6379,10.182.26.197:6379</redisConfig>
+	<redisTimeOut>1000</redisTimeOut>
+	<redisPassword>mastercom168</redisPassword>
+	<redisFilePath>/app4/mingtong/simu</redisFilePath>
+	<!-- 指纹库存放路径 -->
+	<FigureConfigPath>/wangyou/mingtong/mt_wlyh/Data/config/cellfigure</FigureConfigPath>
+	<!-- 配置存放路径 -->
+	<SimuLocConfigPath>/wangyou/mingtong/mt_wlyh/Data/config/simuloc</SimuLocConfigPath>
+	<MrLocationPredictPath>/wangyou/mingtong/mt_wlyh/Data/config/buildfinger/</MrLocationPredictPath>
+	<!-- reduce 的数量 -->
+	<reduceNmu>1000</reduceNmu>
+	<!--前后扩展场强的范围 -->
+	<range>6</range>
+	<!--栅格中至少至少匹配到的小区数，小于这个数丢弃该栅格 -->
+	<CellNum>1</CellNum>
+	<!-- -经度加减随机数范围 -->
+	<ilongitudRrandomWidth>0.0002</ilongitudRrandomWidth>
+	<!-- -纬度加减随机数范围 -->
+	<ilatitudeRrandomWidth>0.00018</ilatitudeRrandomWidth>
+	<pianyiNum>1</pianyiNum>
+	<!-- cqt、dt 划分比例分界线 -->
+	<percent>0.80</percent>
+	<!-- figureFixFlag 是否用指纹库定位 -->
+	<figureFixFlag>1</figureFixFlag>
+	<!-- 单个reduce分配的核心数 -->
+	<reduceVcore>2</reduceVcore>
+	<!-- map内存大小 兆为单位 -->
+	<mapMemory>4096</mapMemory>
+	<!-- reduce内存大小 兆为单位 -->
+	<reduceMemory>8192</reduceMemory>
+	<!--cellgridMerge中同一个cellgrid的sample个数极限值 -->
+	<limitSampleNum>200</limitSampleNum>
+	<!-- 栅格大小 -->
+	<size>10</size>
+	<!-- cellgrid原始存放路径 -->
+	<cellgridPath>/mt_wlyh/Data/adjustFigure</cellgridPath>
+	<!-- cellgridmerge后存放路径 -->
+	<cellgridConfigPath>/mt_wlyh/Data/adjustFigure</cellgridConfigPath>
+	<!-- imei能力库的位置 -->
+	<imeiCapbilityPath>/wangyou/mingtong/mt_wlyh/Data/config/imeiCapbilityTable.txt</imeiCapbilityPath>
+	<!-- 小区楼宇关系表所文件夹 -->
+	<cellBuildPath>/wangyou/mingtong/mt_wlyh/Data/config/cellBuild</cellBuildPath>
+	<dealSizeMap_M>1024</dealSizeMap_M>
+	<dealSizeReduce_M>3072</dealSizeReduce_M>
+	<slowReduce>1</slowReduce>
+	<failPrecentMap>10</failPrecentMap>
+	<failPrecentReduce>10</failPrecentReduce>
+	<!-- 写完整路径，时间和前面的MroXdrMerge使用%1$s 时间使用%2$s来表示 -->
+	<httpPath>/OSSDATA/DPI_LTE/dr_lte_http_tdr_httpcontent/${yyyyMMdd}/*/*</httpPath>
+	<mwPath>/OSSDATA/DPI_VOLTE/dr_volte_gm-mw_tdr/${yyyyMMdd}/*/*</mwPath>
+	<svPath>/OSSDATA/DPI_VOLTE/dr_volte_sv_tdr/${yyyyMMdd}/*/*</svPath>
+	<rxPath>/OSSDATA/DPI_VOLTE/dr_volte_gx-rx_tdr/${yyyyMMdd}/*/*</rxPath>
+	<mosPath>/AAAA</mosPath>
+	<dhwjtPath>/AAAA</dhwjtPath>
+	<rtpPath></rtpPath>
+	<mgPath></mgPath>
+	<mmePath>/OSSDATA/DPI_LTE/dr_s1_mme_tdr/${yyyyMMdd}/*/*</mmePath>
+	<!-- 是否输出源数据，加上定位信息  是填写yes,默认为false -->
+	<outXdrData>false</outXdrData>
+	<!-- 是否输出 event统计  是填写yes,默认为false -->
+	<toEventData>yes</toEventData>
+	<outSuccessData>no</outSuccessData>
+	<outFailData>yes</outFailData>
+	<!--高铁相关配置-->
+        <RailCellConf>/wangyou/mingtong/mt_wlyh/Data/config/rail/cellconf</RailCellConf>
+        <RailConf>/wangyou/mingtong/mt_wlyh/Data/config/rail/railconf</RailConf>
+        <RailRailStation>/wangyou/mingtong/mt_wlyh/Data/config/rail/stationconf/railstation.txt</RailRailStation>
+        <RailRRU>/wangyou/mingtong/mt_wlyh/Data/config/rail/rruconf/rru.txt</RailRRU>
+        <!-- 小区楼宇wifi路径 -->
+	<cellBuildWifiPath>/wangyou/mingtong/mt_wlyh/Data/config/cellbuildwifi</cellBuildWifiPath>
+	
+	<MergeUserResidentDayNum>-60</MergeUserResidentDayNum>
+	<!-- 楼宇楼层室分用户数配置 -->
+	<BuildIndoorCellUserConfigPath>/wangyou/mingtong/mt_wlyh/Data/mroxdrmerge/resident_config/tb_cfg_building_indoor_cell</BuildIndoorCellUserConfigPath>
+	<!-- 家宽配置 -->
+	<HomeBroadbandConfigPath>/wangyou/mingtong/mt_wlyh/Data/config/homebroadband.txt</HomeBroadbandConfigPath>
+	<!-- 物业点配置路径 -->
+	<PropertyConfigPath>/wangyou/mingtong/mt_wlyh/Data/config/poi.txt</PropertyConfigPath>
+
+	<!-- 高铁区间小区配置 -->
+	<hsrSectionCellPath>/wangyou/mingtong/mt_wlyh/Data/config/hsr/tb_hsr_cfg_section_cell.txt</hsrSectionCellPath>
+	<!-- 高铁站小区配置 -->
+	<hsrStationCellPath>/wangyou/mingtong/mt_wlyh/Data/config/hsr/tb_hsr_cfg_station_cell.txt</hsrStationCellPath>
+	<!-- 高铁站配置 -->
+	<hsrStationPath>/wangyou/mingtong/mt_wlyh/Data/config/hsr/tb_hsr_cfg_station.txt</hsrStationPath>
+	<!-- 高铁区间配置 -->
+	<hsrSectionPath>/wangyou/mingtong/mt_wlyh/Data/config/hsr/tb_hsr_cfg_section.txt</hsrSectionPath>
+	<!-- 高铁路段配置 -->
+	<hsrSegmentPath>/wangyou/mingtong/mt_wlyh/Data/config/hsr/tb_hsr_cfg_segment.txt</hsrSegmentPath>
+	<!-- 高铁RRU配置 -->
+	<hsrSectionRruPath>/wangyou/mingtong/mt_wlyh/Data/config/hsr/tb_hsr_cfg_rru.txt</hsrSectionRruPath>
+	
+	<!-- 2,3G数据 -->
+	<GsmCallPath>/mt_wlyh/Data/BeiJing/MME/${yyMMdd}/O_SE_BA_A_INTERFACE_CALL_H</GsmCallPath>
+	<GsmLocationPath>/mt_wlyh/Data/BeiJing/MME/${yyMMdd}/O_SE_BA_A_INTERFACE_LOCATION_UPDATE_H</GsmLocationPath>
+	<GsmSmsPath>/mt_wlyh/Data/BeiJing/MME/${yyMMdd}/O_SE_BA_A_INTERFACE_SMS_RECORD_H</GsmSmsPath>
+	<TdCallPath>/mt_wlyh/Data/BeiJing/MME/${yyMMdd}/O_SE_BA_IUCS_CALL_RECORD_H</TdCallPath>
+	<TdLocationPath>/mt_wlyh/Data/BeiJing/MME/${yyMMdd}/O_SE_BA_IUCS_LOCATION_UPDATE_H</TdLocationPath>
+	<TdSmsPath>/mt_wlyh/Data/BeiJing/MME/${yyMMdd}/O_SE_BA_IUCS_SMS_RECORD_H</TdSmsPath>
+	
+	<!--联通电信主服场强过滤 -->
+	<LteScRSRP>-110</LteScRSRP>
+	<!--基站距离-->
+	<FreqLocDistance>3000</FreqLocDistance>
+	
+	<!-- mdt路径 -->
+	<huaweiMdtLogDataPath>/wangyou/mingtong/mt_wlyh/mdt/hw/LOG/${yyyyMMdd}</huaweiMdtLogDataPath>
+	<huaweiMdtImmDataPath>/wangyou/mingtong/mt_wlyh/mdt/hw/IMM/${yyyyMMdd}</huaweiMdtImmDataPath>
+	<zteMdtLogDataPath>/wangyou/mingtong/mt_wlyh/mdt/zte/LOG/${yyyyMMdd}</zteMdtLogDataPath>
+	<zteMdtImmDataPath>/wangyou/mingtong/mt_wlyh/mdt/zte/IMM/${yyyyMMdd}</zteMdtImmDataPath>
+</configuration>

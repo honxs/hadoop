@@ -1,0 +1,90 @@
+package cn.mastercom.bigdata.spark.mroxdrmerge;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.spark.api.java.function.PairFlatMapFunction;
+
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.util.DataAdapterConf.ParseItem;
+import cn.mastercom.bigdata.util.DataAdapterReader;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.ResultOutputer;
+import cn.mastercom.bigdata.util.spark.MapByTypeFuncBaseV2;
+import cn.mastercom.bigdata.util.spark.TypeInfo;
+import cn.mastercom.bigdata.xdr.prepare.deal.XdrPrepareDeal;
+import cn.mastercom.bigdata.xdr.prepare.stat.XdrPrepareTablesEnum;
+import scala.Tuple2;
+
+/**
+ * xdr_prepare的http数据的处理过程,输出的格式设置为:<long, String>
+ * 为了和loc数据保持一致,union之后作为xdr_loc阶段的输出
+ * @author xmr
+ *
+ */
+public class MapByUriFunc_HTTP extends MapByTypeFuncBaseV2 implements PairFlatMapFunction<Iterator<String>,Long,String>
+{
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	public boolean iOnce = true;
+	private ResultOutputer resultOutputer;
+	public XdrPrepareDeal xdrPrepareDeal;
+	ParseItem httpParseItem;
+	private DataAdapterReader httpAdapterReader;
+	int httpSplitMax = -1;
+	public MapByUriFunc_HTTP(Object [] args) throws Exception
+	{
+		 super(args);	  
+		 registerTableInfo();
+		
+	}
+	
+	public void registerTableInfo() {
+		for (XdrPrepareTablesEnum xdrPrepareTablesEnum : XdrPrepareTablesEnum.values())
+		{
+			TypeInfo typeInfo = new TypeInfo(xdrPrepareTablesEnum.getIndex(), xdrPrepareTablesEnum.getFileName(), xdrPrepareTablesEnum.getHourPath(mroXdrMergePath, dateStr, hourStr));
+			typeInfoMng_HDFS.registTypeInfo(typeInfo);
+		}
+	}
+	
+	
+	@Override
+	protected int init_once_sub() throws Exception {
+		// 初始化基础配置
+		System.out.println("开始初始化基础配置! ");
+		Configuration conf = new Configuration();
+		MainModel.GetInstance().setConf(conf);
+		try
+		{
+			resultOutputer = new ResultOutputer(dataOutputMng);
+			xdrPrepareDeal = new XdrPrepareDeal(resultOutputer);
+		}
+		catch(Exception e)
+		{
+			LOGHelper.GetLogger().writeDetailLog(LogType.error, "http init_once_sub : http: " + httpSplitMax , e);
+		}
+		
+		return 0;
+	}
+
+	/**
+	 *  输入的数据是http数据 
+	 */
+	@Override
+	public Iterable<Tuple2<Long, String>> call(Iterator<String> t) throws Exception {
+		init_once();
+		
+		while(t.hasNext()) 
+		{
+			xdrPrepareDeal.pushData(XdrPrepareDeal.DataType_MAP, t.next().toString());
+		}
+		
+		dataOutputMng.clear();
+		return new ArrayList();
+	}
+
+}

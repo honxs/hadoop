@@ -1,0 +1,85 @@
+package cn.mastercom.bigdata.stat.userResident.buildIndoorCell.ids;
+
+import cn.mastercom.bigdata.StructData.StaticConfig;
+import cn.mastercom.bigdata.conf.cellconfig.CellConfig;
+import cn.mastercom.bigdata.conf.cellconfig.LteCellInfo;
+import cn.mastercom.bigdata.stat.userResident.enmus.BuildIndoorCellTablesEnum;
+import cn.mastercom.bigdata.stat.userResident.enmus.ResidentUserTablesEnum;
+import cn.mastercom.bigdata.stat.userResident.homeBroadbandLoc.NewResidentUser;
+import cn.mastercom.bigdata.util.IWriteLogCallBack;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.ResultOutputer;
+
+import java.util.HashSet;
+import java.util.Set;
+
+public class IDSUserOutputerUtil {
+    private Set<String> idsUser;
+    private Set<Long> residentUserImsi;
+    private Set<Long> residentIdsUserImsi;
+
+    private static IDSUserOutputerUtil instance;
+
+    public static IDSUserOutputerUtil getInstance() {
+        if (null == instance) {
+            synchronized (IDSUserOutputerUtil.class) {
+                if (null == instance) {
+                    instance = new IDSUserOutputerUtil();
+                }
+            }
+        }
+        return instance;
+    }
+
+    private IDSUserOutputerUtil() {
+        this.idsUser = new HashSet<>();
+        this.residentUserImsi = new HashSet<>();
+        this.residentIdsUserImsi = new HashSet<>();
+    }
+
+    public void addResidentUser(NewResidentUser user) {
+        this.residentUserImsi.add(user.imsi);
+        if (isIDSUser(user)) {
+            this.idsUser.add(handleOutputLine(user));
+            this.residentIdsUserImsi.add(user.imsi);
+        }
+    }
+    private String handleOutputLine(NewResidentUser user) {
+        final String spliter = "\t";
+        return String.format("%d%s%d%s%d%s%d%s%d%s%d", user.cityID, spliter, user.buildId, spliter, user.height, spliter, user.position, spliter, user.eci, spliter, user.imsi);
+    }
+    private boolean isIDSUser(NewResidentUser user) {
+        LteCellInfo cellInfo = CellConfig.GetInstance().getLteCell(user.eci);
+        return null != cellInfo && StaticConfig.INCOVER == cellInfo.indoor;
+    }
+
+    public void outputDataOrContinue(ResultOutputer outputer) {
+        if (!shouldBeOutput()) {
+            clear();
+            return;
+        }
+        output(outputer);
+        clear();
+    }
+    private boolean shouldBeOutput() {
+        int idsUserCount = residentIdsUserImsi.size();
+        int totalUserCount = residentUserImsi.size();
+
+        return totalUserCount > 20 && (idsUserCount * 1.0 / totalUserCount > 0.6);
+    }
+    private void clear() {
+        this.residentUserImsi.clear();
+        this.idsUser.clear();
+        this.residentIdsUserImsi.clear();
+    }
+    private void output(ResultOutputer outputer) {
+        for (String line : this.idsUser) {
+            try {
+                outputer.pushData(BuildIndoorCellTablesEnum.User_Resident_Indoor.getIndex(), line);
+                outputer.pushData(ResidentUserTablesEnum.User_Resident_Indoor.getIndex(), line);
+            } catch (Exception e) {
+                LOGHelper.GetLogger().writeLog(IWriteLogCallBack.LogType.error, "UserResidentIndoor save err ", e);
+            }
+        }
+    }
+}

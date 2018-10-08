@@ -1,0 +1,289 @@
+package cn.mastercom.bigdata.mapr.evt.locall;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+
+import cn.mastercom.bigdata.util.*;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+import cn.mastercom.bigdata.evt.locall.model.XdrDataBase;
+import cn.mastercom.bigdata.evt.locall.model.XdrDataFactory;
+import cn.mastercom.bigdata.evt.locall.stat.ImsiKey;
+import cn.mastercom.bigdata.evt.locall.stat.XdrLocallexDeal2;
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.util.DataAdapterConf.ParseItem;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.hadoop.mapred.CombineSmallFileRecordReader;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealMapperV2;
+import cn.mastercom.bigdata.xdr.loc.ResidentUser;
+
+
+public class LocAllMapper_Imsi
+{
+	/**
+	 * 
+	 * 对位置库的数据进行Map分包
+	 * @author Zhaikaishun
+	 *
+	 */
+	public static class UserLocMapper_XDRLOC extends Mapper<Object, Text, ImsiKey, Text>
+	{
+		private String locString = "";
+		//位置库按照\t分割的数组
+		private String[] valstrs;
+		private long imsi;
+		private int ilongtitude;
+		private int ilatitude;
+		private ImsiKey imsiKey;
+
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{  
+			locString = value.toString();
+			valstrs = locString.split("\t", -1);
+			try
+			{
+
+				imsi = Long.parseLong(valstrs[3]);
+				ilongtitude = Integer.parseInt(valstrs[4]);
+				ilatitude = Integer.parseInt(valstrs[5]);
+
+				if (imsi <= 0 || ilongtitude <= 0 || ilatitude <= 0 || imsi == 6061155539545534980L)
+				{
+					return;
+				}
+
+				imsiKey = new ImsiKey(imsi, XdrDataFactory.LOCTYPE_XDRLOC);
+				context.write(imsiKey, value);
+			}
+			catch (Exception e)
+			{
+				if (MainModel.GetInstance().getCompile().Assert(CompileMark.Debug))
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error, "format error：" + locString, e);
+				}
+			}
+		}
+	}
+
+	/**
+	 * 对需要做事件统计的原始数据，组成ImsiKey，并且进行分包
+	 * @author Zhaikaishun
+	 */
+	public static class XdrDataMapper_Imsi extends DataDealMapperV2<Object, Text, ImsiKey, Text>
+	{
+		//数据类型
+		private int dataType = 0;
+		private Long imsi = 0l;
+		private long ecgi=0;
+		//某条数据组成的对象
+		private XdrDataBase xdrDataItem = null;
+		//当前行的分隔符
+		private String curFileSplitPath = "";
+		//当前行所在文件的文件夹的路径，是文件夹的路径
+		private String tmpInPath = "";
+		// 数据路径对应的dataType，通过dataType可以用公参类实例对应的对象
+		private Map<String, Integer> pathIndexMap = null;
+		// 当前行数据的解析器
+		private ParseItem curParseItem = null;
+		// 当前行数据解析器
+		private DataAdapterReader curDataAdapterReader = null;
+		private XdrLocallexDeal2 xdrLocallexDeal;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			// 加载日志构造器，multiOutPut等设置
+			super.setup(context);
+			Configuration conf = context.getConfiguration();
+			String date = conf.get("mapreduce.job.date");
+			MainModel.GetInstance().setConf(conf);
+			initData(context);
+			/* 构造MultiOutput的输出对象 */
+			ResultOutputer resultOutputer = new ResultOutputer(mos);
+			xdrLocallexDeal = new XdrLocallexDeal2(resultOutputer);
+			// 按小区列表过滤
+			FilterByEci.readEciList(conf, date);
+		}
+
+		/**
+		 * Called once at the end of the task.
+		 */
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			super.cleanup(context);
+		}
+
+		/**
+		 * <p>得到每一种数据的路径,然后对每一种数据都进行map.
+		 * 
+		 */
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			//数据为空直接返回
+			if (value.toString().length() == 0)
+			{
+				return;
+			}
+			// 得到当前行所在的文件所在的目录.
+			tmpInPath = context.getConfiguration().get(CombineSmallFileRecordReader.CombineSmallFilePath);
+			if (curFileSplitPath.length() != tmpInPath.length() || !curFileSplitPath.equals(tmpInPath))
+			{
+				xdrDataItem = initDataType(tmpInPath);
+				curFileSplitPath = tmpInPath;
+				/*得到当前行数据的解析器*/
+				curParseItem = xdrDataItem.getDataParseItem();
+				if (curParseItem == null)
+				{
+					throw new IOException("parse item do not get.");
+				}
+				curDataAdapterReader = new DataAdapterReader(curParseItem);
+			}
+			/* 开始解析 */
+			String[] valstrs = value.toString().split(curParseItem.getSplitMark(), -1);
+			curDataAdapterReader.readData(valstrs);
+			try
+			{
+				if (!xdrDataItem.FillData_short(curDataAdapterReader))
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error, "LocAllimsiMap fillData failure: class: " +
+							""+xdrDataItem
+							.getClass().getName());
+					return;
+				}
+			}
+			catch (Exception e)
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error, "locAllLocLib.fillData error : " + value.toString(), e);
+				return;
+			}
+ 
+			dataType = xdrDataItem.getDataType();
+			imsi = xdrDataItem.getImsi();
+			ecgi = xdrDataItem.getEcgi();
+			//eci过滤,eci如果大于Integer最大值。 或者eci大于0情况下，此eci加入了过滤列表，则进行过滤
+			if (ecgi > Integer.MAX_VALUE || (!FilterByEci.ifMap(ecgi) && ecgi > 0)) {
+				return;
+			}
+			/* imsi关联的，在imsi小于等于0时舍弃，但是对于内蒙需要输出数据 */
+			if (imsi <= 0)
+			{
+				if(MainModel.GetInstance().getCompile().Assert(CompileMark.NeiMeng)){				
+					LocAllExUtil.neimengPushCPEData(xdrLocallexDeal, dataType, value.toString());	
+				}
+				return;	
+			}
+			/* 内蒙异常imsi数据的输出 */
+			if(imsi==6061155539545534980L && 
+					MainModel.GetInstance().getCompile().Assert(CompileMark.NeiMeng)){
+				LocAllExUtil.neimengPushCPEData(xdrLocallexDeal, dataType, value.toString());
+				return;
+			}
+
+			ImsiKey itemKey = new ImsiKey(imsi, dataType);
+			context.write(itemKey, value);
+		}
+
+		/**
+		 * 通过main传入的参数，给pathIndexMap赋值， key为数据路径,value为dataType
+		 * @param context
+		 */
+		private void initData(Context context)
+		{
+			// pathIndex: 1,/mt_wlyh/Data/test1$2,/mt_wlyh/Data/test2
+			String inpathindex = conf.get("mastercom.mroxdrmerge.locall.inpathindex");
+			pathIndexMap = new HashMap<String, Integer>();
+			for (String pathPare : inpathindex.split(";", -1))
+			{
+				if (pathPare.length() == 0)
+				{
+					continue;
+				}
+
+				String[] ppPare = pathPare.split("#");
+				String ppPath = ppPare[1];// 路径
+
+				if (ppPath.indexOf("hdfs://") >= 0)
+				{
+					int tm_sPos = ppPath.indexOf("/", ("hdfs://").length());
+					ppPath = ppPath.substring(tm_sPos);
+				}
+
+				ppPath = StringHelper.SideTrim(ppPath, "/");
+				ppPath = StringHelper.SideTrim(ppPath, "\\\\");
+				ppPath = "/" + ppPath;
+
+				pathIndexMap.put(ppPath, Integer.parseInt(ppPare[0]));
+			}
+		}
+
+		/**
+		 * @param dirPath 输入路径
+		 * @return 输入路径对应的xdrDataBase对象
+		 * @throws InterruptedException
+		 */
+		private XdrDataBase initDataType(String dirPath) throws InterruptedException
+		{
+			// hdfs://node001:9000/mt_wlyh/Data/mroxdrmerge/mro_loc/data_01_160421/TB_SIGNAL_CELL_01_160421
+			int sPos = dirPath.indexOf("/", ("hdfs://").length());
+			String formatPath = dirPath.substring(sPos);
+			if (dirPath.startsWith("file:"))
+			{
+				formatPath = dirPath.replace("file:", "");
+			}
+			if (!pathIndexMap.containsKey(formatPath))
+			{
+				throw new InterruptedException("path index is not found, please check : " + formatPath);
+			}
+
+			int mergeType = pathIndexMap.get(formatPath);
+
+			try
+			{
+				return XdrDataFactory.GetInstance().getXdrDataObject(mergeType);
+			}
+			catch (Exception e)
+			{
+				e.printStackTrace();
+				LOGHelper.GetLogger().writeLog(LogType.error, "mergeType: " + mergeType + " formatPath: " + formatPath);
+				throw new InterruptedException("init data type error :" + mergeType + " " + e.getMessage());
+			}
+		}
+	}
+
+	
+	public static class ResidentUserMapper extends Mapper<Object, Text, ImsiKey, Text>{
+		private long imsi;
+		private ImsiKey imsiKey;
+		@Override
+		protected void map(Object key, Text value, Context context)
+				throws IOException, InterruptedException {
+            try{
+                // imsi已经是加密了的
+                String[] split = value.toString().split(ResidentUser.spliter);
+                imsi = Long.parseLong(split[1]);
+                // 常驻用户解密
+                imsi = Func.getEncryptResident(imsi);
+                int locType = Integer.parseInt(split[13]);
+                String locSource = split[14];
+                if(("fp").equals(locSource)){
+                    return;
+                }
+                if(locType==1||locType==2){
+                    imsiKey = new ImsiKey(imsi, XdrDataFactory.LOCTYPE_RESIDENTLOC);
+
+                    context.write(imsiKey, value);
+                }
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+
+		}
+	}
+	
+}

@@ -1,0 +1,692 @@
+package cn.mastercom.bigdata.mapr.mro.loc;
+
+import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import org.apache.hadoop.conf.Configurable;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.io.WritableComparator;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Partitioner;
+import cn.mastercom.bigdata.StructData.*;
+import cn.mastercom.bigdata.util.DataAdapterReader;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealMapperV2;
+import cn.mastercom.bigdata.util.DataAdapterConf.ParseItem;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.mro.loc.CellTimeKey;
+import cn.mastercom.bigdata.mro.loc.MroXdrDeal;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.util.DataGeter;
+import cn.mastercom.bigdata.util.FilterByEci;
+import cn.mastercom.bigdata.util.Func;
+
+public class MroLableMappers
+{
+	public static class XdrLocationMappers extends Mapper<Object, Text, CellTimeKey, Text>
+	{
+		private long eci = 0;
+		private int time = 0;
+		private final int TimeSpan = 600;// 10分钟间隔
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			// TODO Auto-generated method stub
+			super.setup(context);
+			// 按小区列表过滤
+			Configuration conf = context.getConfiguration();
+			String date = conf.get("mapreduce.job.date");
+			FilterByEci.readEciList(conf, date);
+		}
+
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			super.cleanup(context);
+		}
+
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			super.setup(context);
+
+			String[] valstrs = value.toString().split("\t", -1);
+
+			if (valstrs.length < 11)
+			{
+				return;
+			}
+
+			eci = Long.parseLong(valstrs[1].trim());
+			if (eci > Integer.MAX_VALUE || !FilterByEci.ifMap(eci))
+			{
+				return;
+			}
+			time = Integer.parseInt(valstrs[3].trim());
+
+			int tmTime = time / TimeSpan * TimeSpan;
+			CellTimeKey keyItem = new CellTimeKey(eci, tmTime - TimeSpan, MroXdrDeal.DataType_XDRLOCATION);
+			context.write(keyItem, value);
+
+			keyItem = new CellTimeKey(eci, tmTime, MroXdrDeal.DataType_XDRLOCATION);
+			context.write(keyItem, value);
+
+			keyItem = new CellTimeKey(eci, tmTime + TimeSpan, MroXdrDeal.DataType_XDRLOCATION);
+			context.write(keyItem, value);
+		}
+
+	}
+
+	public static class ResidentUserMappers extends Mapper<Object, Text, CellTimeKey, Text>
+	{
+		private CellTimeKey keyItem;
+		private long eci = 0;
+		private String date;
+		private int locType;
+		private final int timeSpan = 600;// 10分钟间隔
+		private static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddHH");
+		
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			// TODO Auto-generated method stub
+			super.setup(context);
+			// 按小区列表过滤
+			Configuration conf = context.getConfiguration();
+			date = conf.get("mapreduce.job.date");
+			FilterByEci.readEciList(conf, date);
+		}
+
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			super.cleanup(context);
+		}
+
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			String[] valstrs = value.toString().split("\t", -1);
+
+			if (valstrs.length < 19)
+			{
+				return;
+			}
+
+			eci = Long.parseLong(valstrs[6].trim());
+			if (!FilterByEci.ifMap(eci))
+			{
+				return;
+			}
+			locType = Integer.parseInt(valstrs[5].trim());
+			if(locType == 1)	//只给mr回填locType为1，2的工作地点和家庭地点共12小时数据
+			{
+				keyItem = new CellTimeKey(eci, 0, MroXdrDeal.DataType_RESIDENTUSER);
+				context.write(keyItem, value);
+			}
+			
+			if(locType == 2)
+			{
+				keyItem = new CellTimeKey(eci, 0, MroXdrDeal.DataType_RESIDENTUSER);
+				context.write(keyItem, value);
+			}
+		}
+
+	}
+
+	public static class MroDataMapperByEciTime extends Mapper<Object, Text, CellTimeKey, Text>
+	{
+		private long eci = 0;
+		private int time = 0;
+		private final int timeSpan = 600;// 10分钟间隔
+		private final int subTimeSpan = 5;// 5秒钟间隔
+		private ParseItem parseItem;
+		private DataAdapterReader dataAdapterReader_MROSRC;
+		private List<String> columnNameList;
+		private Text curText = new Text();
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			parseItem = MainModel.GetInstance().getDataAdapterConfig().getParseItem("MRO-SRC");
+			if (parseItem == null)
+			{
+				throw new IOException("parse item do not get.");
+			}
+			columnNameList = parseItem.getColumNameList();
+			dataAdapterReader_MROSRC = new DataAdapterReader(parseItem);
+			// 按小区列表过滤
+			Configuration conf = context.getConfiguration();
+			String date = conf.get("mapreduce.job.date");
+			FilterByEci.readEciList(conf, date);
+		}
+
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			super.cleanup(context);
+		}
+
+		@Override
+		protected void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			String[] strs = null;
+			strs = value.toString().split(parseItem.getSplitMark(), -1);
+			dataAdapterReader_MROSRC.readData(strs);
+			try
+			{
+				time = (int) (dataAdapterReader_MROSRC.GetDateValue("beginTime", null).getTime() / 1000);
+				int enbID = dataAdapterReader_MROSRC.GetIntValue("ENBId", -1);
+				long cellID = 0;
+				String tmStr = dataAdapterReader_MROSRC.GetStrValue("CellId", "0");
+				if (tmStr.indexOf(":") > 0)
+				{
+					cellID = DataGeter.GetLong(tmStr.substring(0, tmStr.indexOf(":")));
+				}
+				else if (tmStr.indexOf("-") > 0)
+				{
+					cellID = DataGeter.GetLong(tmStr.substring(tmStr.indexOf("-") + 1));
+				}
+				else
+				{
+					cellID = DataGeter.GetLong(tmStr);
+				}
+				if (cellID < 256)
+				{
+					eci = enbID * 256L + cellID;
+				}
+				else
+				{
+					eci = cellID;
+				}
+				if (eci > Integer.MAX_VALUE || !FilterByEci.ifMap(eci))
+				{
+					return;
+				}
+				CellTimeKey keyItem = new CellTimeKey(eci, time / timeSpan * timeSpan, MroXdrDeal.DataType_MRO, time / subTimeSpan * subTimeSpan);
+				curText.set(dataAdapterReader_MROSRC.getAppendString(columnNameList));
+				context.write(keyItem, curText);
+				
+			}
+			catch (Exception e)
+			{
+				e.printStackTrace();
+			}
+		}
+	}
+
+	public static class MroDataMappers extends Mapper<Object, Text, CellTimeKey, Text>
+	{
+		private final int TimeSpan = 600;// 10分钟间隔
+		private ParseItem parseItem;
+		private Text resultValue = new Text();
+		private DataAdapterReader dataAdapterReader_MROSRC;
+		private SIGNAL_MR_All mrResult;
+//		private HashMap<String, NC_LTE> ncLteMap;
+		private HashMap<String, NC_GSM> ncGsmMap;
+		private List<NC_LTE> nclteList;
+		private HashMap<Integer, NC_LTE> freqLteMap;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			parseItem = MainModel.GetInstance().getDataAdapterConfig().getParseItem("MRO-SRC");
+			if (parseItem == null)
+			{
+				throw new IOException("parse item do not get.");
+			}
+			nclteList = new ArrayList<>();
+			ncGsmMap = new HashMap<String, NC_GSM>();
+			freqLteMap = new HashMap<>();
+			
+			mrResult = new SIGNAL_MR_All();
+			dataAdapterReader_MROSRC = new DataAdapterReader(parseItem);
+			// 按小区列表过滤
+			Configuration conf = context.getConfiguration();
+			String date = conf.get("mapreduce.job.date");
+			FilterByEci.readEciList(conf, date);
+		}
+
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			if (mrResult.tsc.MmeUeS1apId > 0)
+			{
+				OutputOneMr(nclteList, freqLteMap, ncGsmMap, mrResult, context);
+			}
+			super.cleanup(context);
+		}
+
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			boolean fillResult = true;
+			String[] strs = null;
+			strs = value.toString().split(parseItem.getSplitMark(), -1);
+			MroOrigDataMT item = new MroOrigDataMT();
+			try
+			{
+				dataAdapterReader_MROSRC.readData(strs);
+				fillResult = item.FillData(dataAdapterReader_MROSRC);
+				long eciTemp = item.ENBId * 256L + item.CellId;
+				if (eciTemp > Integer.MAX_VALUE || !FilterByEci.ifMap(eciTemp))
+				{
+					return;
+				}
+			}
+			catch (Exception e)
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error, "MroOrigDataMT error ", e);
+				// continue;
+			}
+		
+			int Weight = getValidValueInt(mrResult.tsc.Weight, item.Weight);
+
+			if (Weight == 1 && mrResult.tsc.MmeUeS1apId > 0)
+			{
+				OutputOneMr(nclteList, freqLteMap, ncGsmMap, mrResult, context);
+			}
+
+			try
+			{
+				mrResult.tsc.beginTime = (int) (item.beginTime.getTime() / 1000L);
+				mrResult.tsc.beginTimems = (int) (item.beginTime.getTime() % 1000L);
+			}
+			catch (Exception e)
+			{
+				mrResult.tsc.beginTime = 0;
+				mrResult.tsc.beginTimems = 0;
+				// continue;
+			}
+
+			mrResult.tsc.Weight = Weight;
+			mrResult.tsc.IMSI = 0;
+			mrResult.tsc.TAC = 0;
+			mrResult.tsc.ENBId = getValidValueInt(mrResult.tsc.ENBId, item.ENBId);
+			mrResult.tsc.Earfcn = getValidValueInt(mrResult.tsc.Earfcn, item.LteScEarfcn);
+			//爱立信mr数据带经纬度
+			if(item.longitude > 0){
+				mrResult.tsc.longitude = getValidValueInt(mrResult.tsc.longitude, item.longitude);
+				mrResult.tsc.latitude = getValidValueInt(mrResult.tsc.latitude, item.latitude);
+			}
+			
+			if (Weight == 1 && mrResult.tsc.MmeUeS1apId <= 0)
+			{
+				mrResult.tsc.MmeUeS1apId = getValidValueLong(mrResult.tsc.MmeUeS1apId, item.MmeUeS1apId);
+				mrResult.tsc.EventType = getValidValueString(mrResult.tsc.EventType, item.EventType);
+				mrResult.tsc.LteScRSRP = getValidValueInt(mrResult.tsc.LteScRSRP, item.LteScRSRP);
+				mrResult.tsc.LteScRSRQ = getValidValueInt(mrResult.tsc.LteScRSRQ, item.LteScRSRQ);
+				mrResult.tsc.LteScEarfcn = getValidValueInt(mrResult.tsc.LteScEarfcn, item.LteScEarfcn);
+				mrResult.tsc.LteScPci = getValidValueInt(mrResult.tsc.LteScPci, item.LteScPci);
+				mrResult.tsc.LteScBSR = getValidValueInt(mrResult.tsc.LteScBSR, item.LteScBSR);
+				mrResult.tsc.LteScRTTD = getValidValueInt(mrResult.tsc.LteScRTTD, item.LteScRTTD);
+				mrResult.tsc.LteScTadv = getValidValueInt(mrResult.tsc.LteScTadv, item.LteScTadv);
+				mrResult.tsc.LteScAOA = getValidValueInt(mrResult.tsc.LteScAOA, item.LteScAOA);
+				mrResult.tsc.LteScPHR = getValidValueInt(mrResult.tsc.LteScPHR, item.LteScPHR);
+				mrResult.tsc.LteScSinrUL = getValidValueInt(mrResult.tsc.LteScSinrUL, item.LteScSinrUL);
+				mrResult.tsc.LteScRIP = getValidValueDouble(mrResult.tsc.LteScRIP, item.LteScRIP);
+
+				for (int i = 0; i < mrResult.tsc.LteScPlrULQci.length; ++i)
+				{
+					mrResult.tsc.LteScPlrULQci[i] = getValidValueDouble(mrResult.tsc.LteScPlrULQci[i], item.LteScPlrULQci[i]);
+				}
+
+				for (int i = 0; i < mrResult.tsc.LteScPlrDLQci.length; ++i)
+				{
+					mrResult.tsc.LteScPlrDLQci[i] = getValidValueDouble(mrResult.tsc.LteScPlrDLQci[i], item.LteScPlrDLQci[i]);
+				}
+
+				mrResult.tsc.LteScRI1 = getValidValueInt(mrResult.tsc.LteScRI1, item.LteScRI1);
+				mrResult.tsc.LteScRI2 = getValidValueInt(mrResult.tsc.LteScRI2, item.LteScRI2);
+				mrResult.tsc.LteScRI4 = getValidValueInt(mrResult.tsc.LteScRI4, item.LteScRI4);
+				mrResult.tsc.LteScRI8 = getValidValueInt(mrResult.tsc.LteScRI8, item.LteScRI8);
+				mrResult.tsc.LteScPUSCHPRBNum = getValidValueInt(mrResult.tsc.LteScPUSCHPRBNum, item.LteScPUSCHPRBNum);
+				mrResult.tsc.LteScPDSCHPRBNum = getValidValueInt(mrResult.tsc.LteScPDSCHPRBNum, item.LteScPDSCHPRBNum);
+				mrResult.tsc.LteSceNBRxTxTimeDiff = getValidValueInt(mrResult.tsc.LteSceNBRxTxTimeDiff, item.LteSceNBRxTxTimeDiff);
+
+				mrResult.tsc.Eci = item.ENBId * 256L + item.CellId;
+				mrResult.tsc.CellId = mrResult.tsc.Eci;
+			}
+			statLteNbCell(item, nclteList, freqLteMap);
+			statGsmNbCell(item, ncGsmMap);
+		}
+
+		private void OutputOneMr(List<NC_LTE> nclteList, HashMap<Integer, NC_LTE> freqLteMap, HashMap<String, NC_GSM> ncGsmMap, 
+				SIGNAL_MR_All mrResult, Context context)
+		{
+			Collections.sort(nclteList, new Comparator<NC_LTE>() {
+				@Override
+				public int compare(NC_LTE o1, NC_LTE o2) {
+					// TODO Auto-generated method stub
+					return o2.LteNcRSRP - o1.LteNcRSRP;
+				}
+			});
+			
+			int ydCount = 0;
+			Iterator<NC_LTE> it = nclteList.iterator();
+			//同频邻区放最前，最多取3组同频，rsrp逆序
+			while(it.hasNext())
+			{
+				NC_LTE nc_LTE = it.next();
+				if (nc_LTE.LteNcEarfcn == mrResult.tsc.LteScEarfcn) {
+					if (ydCount < 3) {
+						mrResult.tlte[ydCount] = nc_LTE;
+						ydCount++;
+					}
+					it.remove();
+				}
+			}
+			
+			//剩余按rsrp大小取 （同频只有两组，则非同频按rsrp逆序取4组）
+			for (NC_LTE nc_LTE :nclteList)
+			{
+				if (ydCount < mrResult.tlte.length) {
+					mrResult.tlte[ydCount] = nc_LTE;
+					ydCount++;
+				}
+			}
+			
+			mrResult.nccount[0] = (byte)ydCount;
+			nclteList.clear();
+			
+			//freq
+			List<Map.Entry<Integer, NC_LTE>> freqLteList = new ArrayList<Map.Entry<Integer, NC_LTE>>(freqLteMap.entrySet());
+			Collections.sort(freqLteList, new Comparator<Map.Entry<Integer, NC_LTE>>()
+			{
+				public int compare(Map.Entry<Integer, NC_LTE> o1, Map.Entry<Integer, NC_LTE> o2)
+				{
+					return o2.getValue().LteNcRSRP - o1.getValue().LteNcRSRP;
+				}
+			});
+
+			int dxCount = 0;
+			int ltCount = 0;
+			for (int i = 0; i < freqLteList.size(); ++i)
+			{
+				NC_LTE ncItem = freqLteList.get(i).getValue();
+				int type = Func.getFreqType(ncItem.LteNcEarfcn);
+				if (type == Func.YYS_LianTong)
+				{
+					if (ltCount < mrResult.lt_freq.length)
+					{
+						mrResult.lt_freq[ltCount] = ncItem;
+						ltCount++;
+					}
+				}
+				else if (type == Func.YYS_DianXin)
+				{
+					if (dxCount < mrResult.dx_freq.length)
+					{
+						mrResult.dx_freq[dxCount] = ncItem;
+						dxCount++;
+					}
+				}
+			}
+			freqLteList.clear();
+			freqLteMap.clear();
+
+			// NC GSM
+			// GSM只保留前1个邻区
+			List<Map.Entry<String, NC_GSM>> ncGsmList = new ArrayList<Map.Entry<String, NC_GSM>>(ncGsmMap.entrySet());
+			Collections.sort(ncGsmList, new Comparator<Map.Entry<String, NC_GSM>>()
+			{
+				public int compare(Map.Entry<String, NC_GSM> o1, Map.Entry<String, NC_GSM> o2)
+				{
+					return o2.getValue().GsmNcellCarrierRSSI - o1.getValue().GsmNcellCarrierRSSI;
+				}
+			});
+
+			int count = mrResult.tgsm.length < ncGsmList.size() ? mrResult.tgsm.length : ncGsmList.size();
+//			count = count > 1 ? 1 : count;
+			mrResult.nccount[1] = (byte) count;
+
+			for (int i = 0; i < count; ++i)
+			{
+				mrResult.tgsm[i] = ncGsmList.get(i).getValue();
+			}
+			ncGsmList.clear();
+			ncGsmMap.clear();
+			String dataEx = mrResult.GetDataEx();
+			resultValue.set(dataEx);
+
+			CellTimeKey keyItem = new CellTimeKey(mrResult.tsc.Eci, mrResult.tsc.beginTime / TimeSpan * TimeSpan, MroXdrDeal.DataType_MRO_MT);
+			try
+			{
+				context.write(keyItem, resultValue);
+			}
+			catch (Exception e)
+			{
+				// TODO Auto-generated catch block
+			}
+
+			mrResult.Clear();
+//			nclteList.clear();
+//			freqLteMap.clear();
+//			ncGsmMap.clear();
+		}
+
+		public static int getValidValueInt(int srcValue, int targValue)
+		{
+			if (targValue != StaticConfig.Int_Abnormal)
+			{
+				return targValue;
+			}
+			return srcValue;
+		}
+		
+		public static double getValidValueDouble(double srcValue, double targValue)
+		{
+			if (targValue != StaticConfig.Double_Abnormal)
+			{
+				return targValue;
+			}
+			return srcValue;
+		}
+
+		public static long getValidValueLong(long srcValue, long targValue)
+		{
+			if (targValue != StaticConfig.Long_Abnormal)
+			{
+				return targValue;
+			}
+			return srcValue;
+		}
+
+		public static String getValidValueString(String srcValue, String targValue)
+		{
+			if (!targValue.equals(""))
+			{
+				return targValue;
+			}
+			return srcValue;
+		}
+		
+		private static void statLteNbCell(MroOrigDataMT item, List<NC_LTE> nclteList, HashMap<Integer, NC_LTE> freqLteMap)
+		{
+			if (item.LteNcRSRP != StaticConfig.Int_Abnormal && item.LteNcEarfcn > 0 && item.LteNcPci > 0)
+			{
+				NC_LTE data = new NC_LTE();
+				data.LteNcEarfcn = item.LteNcEarfcn;
+				data.LteNcPci = item.LteNcPci;
+				data.LteNcRSRP = item.LteNcRSRP;
+				data.LteNcRSRQ = item.LteNcRSRQ;
+				int freqType = Func.getFreqType(item.LteNcEarfcn);
+				if (freqType == Func.YYS_YiDong)
+				{
+					nclteList.add(data);
+				}
+				else
+				{
+					if (!freqLteMap.containsKey(data.LteNcEarfcn)) {
+						freqLteMap.put(data.LteNcEarfcn, data);
+					}
+					else if (freqLteMap.get(data.LteNcEarfcn).LteNcRSRP < data.LteNcRSRP)
+					{
+						freqLteMap.get(data.LteNcEarfcn).LteNcPci = data.LteNcPci;
+						freqLteMap.get(data.LteNcEarfcn).LteNcRSRP = data.LteNcRSRP;
+						freqLteMap.get(data.LteNcEarfcn).LteNcRSRQ = data.LteNcRSRQ;
+					}
+				}
+			}
+		}
+
+		private static void statGsmNbCell(MroOrigDataMT item, HashMap<String, NC_GSM> ncGsmMap)
+		{
+			if (item.GsmNcellCarrierRSSI != StaticConfig.Int_Abnormal && item.GsmNcellBcch > 0 && item.GsmNcellBcc > 0)
+			{
+				String key = item.GsmNcellBcch + "_" + item.GsmNcellBcc;
+
+				NC_GSM data = ncGsmMap.get(key);
+				if (data == null)
+				{
+					data = new NC_GSM();
+					data.GsmNcellCarrierRSSI = item.GsmNcellCarrierRSSI;
+					data.GsmNcellBsic = item.GsmNcellBcc;
+					data.GsmNcellBcch = item.GsmNcellBcch;
+
+					ncGsmMap.put(key, data);
+				}
+				else
+				{
+					if (item.GsmNcellCarrierRSSI > data.GsmNcellCarrierRSSI)
+					{
+						data.GsmNcellCarrierRSSI = item.GsmNcellCarrierRSSI;
+					}
+				}
+
+			}
+		}
+	}
+
+	public static class UeMroDatamappers extends DataDealMapperV2<Object, Text, CellTimeKey, Text>
+	{
+		private final int TimeSpan = 600;// 10分钟间隔
+		private Text curText = new Text();
+		private SIGNAL_MR_All mrResult;
+		
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException
+		{
+			super.setup(context);
+			mrResult = new SIGNAL_MR_All();
+			// 按小区列表过滤
+			Configuration conf = context.getConfiguration();
+			String date = conf.get("mapreduce.job.date");
+			FilterByEci.readEciList(conf, date);
+		}
+
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException
+		{
+			super.cleanup(context);
+		}
+		
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			String[] strs = null;
+			strs = value.toString().split("\t|,|\\|", -1);
+			try
+			{
+				mrResult.FillData_UEMro(new Object[] { strs, 0 });
+				if (mrResult.tsc.Eci > Integer.MAX_VALUE || !FilterByEci.ifMap(mrResult.tsc.Eci))
+				{
+					return;
+				}
+				CellTimeKey keyItem = new CellTimeKey(mrResult.tsc.Eci, mrResult.tsc.beginTime / TimeSpan * TimeSpan, MroXdrDeal.DataType_MRO_MT);
+				curText.set(mrResult.GetDataEx());
+				context.write(keyItem, curText);
+				mrResult.Clear();
+			}
+			catch (Exception e)
+			{
+				e.printStackTrace();
+				LOGHelper.GetLogger().writeDetailLog(LogType.error, "ueMroData error ", e);
+			}
+		}
+	}
+	
+	public static class CellPartitioner extends Partitioner<CellTimeKey, Text> implements Configurable
+	{
+		private Configuration conf = null;
+
+		@Override
+		public Configuration getConf()
+		{
+			return conf;
+		}
+
+		@Override
+		public void setConf(Configuration conf)
+		{
+			this.conf = conf;
+		}
+
+		@Override
+		public int getPartition(CellTimeKey key, Text value, int numOfReducer)
+		{
+			return Math.abs(String.valueOf(key.getEci()).hashCode()) % numOfReducer;
+		}
+	}
+
+	public static class CellSortKeyComparator extends WritableComparator
+	{
+		public CellSortKeyComparator()
+		{
+			super(CellTimeKey.class, true);
+		}
+
+		@Override
+		public int compare(WritableComparable a, WritableComparable b)
+		{
+			CellTimeKey s1 = (CellTimeKey) a;
+			CellTimeKey s2 = (CellTimeKey) b;
+			return s1.compareTo(s2);
+		}
+
+	}
+
+	public static class CellSortKeyGroupComparator extends WritableComparator
+	{
+
+		public CellSortKeyGroupComparator()
+		{
+			super(CellTimeKey.class, true);
+		}
+
+		@Override
+		public int compare(WritableComparable a, WritableComparable b)
+		{
+			CellTimeKey s1 = (CellTimeKey) a;
+			CellTimeKey s2 = (CellTimeKey) b;
+
+			if (s1.getEci() > s2.getEci())
+			{
+				return 1;
+			}
+			else if (s1.getEci() < s2.getEci())
+			{
+				return -1;
+			}
+			else
+			{
+				if (s1.getTimeSpan() > s2.getTimeSpan())
+				{
+					return 1;
+				}
+				else if (s1.getTimeSpan() < s2.getTimeSpan())
+				{
+					return -1;
+				}
+				return 0;
+			}
+		}
+	}
+
+}

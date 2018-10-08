@@ -1,0 +1,332 @@
+package cn.mastercom.bigdata.locuser_v2;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+
+public class FingerPrint
+{
+    private FingerTable fitb = null;
+    private FingerTable fotb = null;     
+
+    public void Clear()
+    {
+        if (fitb != null) fitb.Clear();
+        if (fotb != null) fotb.Clear();            
+    }
+    
+    public void SetLocc(MrSplice splice, int buildid)
+    {
+        splice.longitude = splice.scell.cell.longitude;
+        splice.latitude = splice.scell.cell.latitude;
+        splice.buildingid = buildid;
+        splice.ilevel = 0;
+        splice.loctype = 1;
+        if (splice.buildingid > 0)
+        {
+            splice.doortype = 1;
+        }
+    }
+    
+    public void SetLocf(MrSplice splice, CfgInfo cInfo, RsrpTable rtable)
+    {
+        int dist = 0;
+
+        if (splice.scell.cell.isindoor == 1)
+        {
+            InitIn(splice, cInfo);
+        }
+        else
+        {
+            InitOut(splice, cInfo, rtable);
+
+            if (splice.nicell != null)
+            {
+                dist = 300;
+            }
+        }
+
+        if (splice.doortype == 1)
+        {
+            DoLocs(fitb, fotb, splice, rtable, dist, cInfo);
+        }
+        else
+        {
+            DoLocs(fotb, fitb, splice, rtable, dist, cInfo);
+        }
+    }    
+    
+    private void InitIn(MrSplice splice, CfgInfo cInfo)
+    {
+        // 室内点,读取楼宇室分指纹库, 只取主服，邻区不取
+        if (fitb == null)
+        {
+            fitb = new FingerTable("IN_IN", "IN_IN", "inin", 300, Integer.parseInt(MainModel.GetInstance().getAppConfig().getSimuInSize()));
+        }
+        if (fotb == null)
+        {
+            fotb = new FingerTable("IN_OUT", "IN_OUT", "inout", 300, Integer.parseInt(MainModel.GetInstance().getAppConfig().getSimuInSize()));
+        }
+
+        // 室分的是两个文件所以都传null
+        fitb.Init(splice, cInfo, null, 0);
+        fotb.Init(splice, cInfo, null, 1);
+    }   
+    
+    private void InitOut(MrSplice splice, CfgInfo cInfo, RsrpTable rtable)
+    {
+        // 读取主服和邻区中室外小区指纹库，室内小区不取
+        if (fitb == null)
+        {                        
+            fitb = new FingerTable("OUT_IN", "OUT", "out", 3000, Integer.parseInt(MainModel.GetInstance().getAppConfig().getSimuInSize()));
+        }
+        if (fotb == null)
+        {
+            fotb = new FingerTable("OUT_OUT", "OUT", "out", 3000, Integer.parseInt(MainModel.GetInstance().getAppConfig().getSimuOutSize()));
+        }
+
+        // 室外的又是一个文件，为了不二次读取
+        List<ArrayList<SimuGrid>> sgs = null;
+        sgs = fitb.Init(splice, cInfo, sgs, 0);
+        fotb.Init(splice, cInfo, sgs, 1);
+
+        for (MrPoint mp : splice.ncells.values())
+        {
+            Mrcell mc = mp.cell;
+            // 未找到eci(<0)的和室分不取指纹库
+            if (mc.eci > 0 && mc.isindoor == 0)
+            {
+                if (mc.eci != splice.scell.cell.eci)
+                {
+                    sgs = null;
+                    sgs = fitb.AddCell(mc, splice, rtable, cInfo, sgs, 0);
+                    fotb.AddCell(mc, splice, rtable, cInfo, sgs, 1);
+                }
+            }
+        }
+    }
+    
+    private void DoLocs(FingerTable ft1, FingerTable ft2, MrSplice splice, RsrpTable rtable, int fdist, CfgInfo cInfo)
+    {
+        int ilong = 0;
+        int ilati = 0;
+        if (fdist > 0)
+        {
+            ilong = splice.nicell.cell.longitude;
+            ilati = splice.nicell.cell.latitude;
+        }
+
+        FingerGrid fg = null;
+        
+        if (splice.doortype == 0)
+        {
+            List<FingerGrid> lfg = new ArrayList<FingerGrid>();
+
+            ft1.GetGrid(lfg);
+            ft2.GetGrid(lfg);
+
+            fg = GetPrint(splice, lfg, ilong, ilati, fdist, cInfo);
+        }
+        else
+        {
+	        fg = GetPrint(ft1, splice, ilong, ilati, fdist, cInfo, rtable, true);
+	
+	        if (fg == null)
+	        {
+	            if (splice.doortype == 1)
+	            {
+	                splice.doortype = 2;
+	            }
+	            else if (splice.doortype == 2)
+	            {
+	                splice.doortype = 1;
+	            }
+	            
+	            fg = GetPrint(ft2, splice, ilong, ilati, fdist, cInfo, rtable, false);
+	        }
+	    }
+
+        if (fg != null)
+        {
+            SimuGrid sg = fg.GetGrid();
+
+            if (sg != null)
+            {
+                splice.longitude = sg.longitude;
+                splice.latitude = sg.latitude;
+                splice.buildingid = sg.buildingid;
+                splice.ilevel = sg.level;
+                splice.loctype = 2;
+                splice.isroad |= (sg.isspec & FingerGrid.HITYPE);
+                if (splice.buildingid > 0)
+                {
+                    splice.doortype = 1;
+                }
+                else
+                {
+                    splice.doortype = 2;
+                }
+            }
+        }
+    }
+    
+    private FingerGrid GetPrint(FingerTable ft, MrSplice splice, int ilong, int ilati, int dist, CfgInfo cInfo, RsrpTable rtable, boolean btable)
+    {
+        List<FingerGrid> lfg = null;
+        // 主服室分不处理
+        if (splice.nocell != null && splice.scell.cell.isindoor == 0 && (splice.doortype != 0 || (splice.doortype == 0 && btable)))
+        {
+            lfg = rtable.GetGrid(splice.scell.cell.rsrp_avg, splice.nocell.cell.eci, splice.nocell.cell.rsrp_avg);
+        }
+
+        if (lfg == null)
+        {
+            lfg = new ArrayList<FingerGrid>();
+
+            ft.GetGrid(lfg);
+        }
+
+        return GetPrint(splice, lfg, ilong, ilati, dist, cInfo);
+    }
+    
+    private FingerGrid GetPrint(MrSplice splice, List<FingerGrid> fgrid, int ilong, int ilat, int dist, CfgInfo cInfo)
+    {
+        if (fgrid.size() == 0)
+        {
+            return null;
+        }
+
+        double currate = 0;
+        RefInt curcount = new RefInt();
+
+        double inmaxrate = 0;
+        int inmaxcount = 0;
+        FingerGrid inmaxsg = null;
+
+        double outmaxrate = 0;
+        int outmaxcount = 0;
+        FingerGrid outmaxsg = null;
+
+        for (FingerGrid fg : fgrid)
+        {
+        	// 170626
+			//if (splice.doortype == 1) // indoor
+			//{
+			//    if (fg.buildingid <= 0)
+			//    {
+			//        continue;
+			//    }
+			//}
+			//else if (splice.doortype == 2) // outdoor
+			//{
+			//    if (fg.buildingid > 0)
+			//    {
+			//        continue;
+			//    }
+			//}
+        	
+        	currate = 0;
+            // 170717 道路判断
+            if (splice.isroad == 1 && (fg.isspec & FingerGrid.ROADTY) == 0)
+            {
+                continue;
+            }
+
+            if (splice.ta >= 0 && splice.scell.cell.longitude > 0 && splice.scell.cell.latitude > 0)
+            {
+                if ((Math.abs(splice.scell.cell.longitude - fg.longitude) / 100 > (splice.ta + 1) * 80)
+                    || (Math.abs(splice.scell.cell.latitude - fg.latitude) / 90 > (splice.ta + 1) * 80))
+                {
+                    continue;
+                }
+            }
+
+            if (dist > 0)
+            {
+                // 邻区有室分
+                if (GetDistance(ilong / 10000000.0, ilat / 10000000.0, fg.longitude / 10000000.0, fg.latitude / 10000000.0) > dist)
+                {
+                    continue;
+                }
+            }
+
+            curcount.value = 0;
+            currate = fg.GetPrint(splice, curcount, cInfo, (fg.buildingid > 0) ? inmaxcount : outmaxcount, fg.ft.necis);
+            if (currate == 0)
+            {
+                continue;
+            }
+            // 一个格子的buildingid唯一
+            if (fg.buildingid > 0)
+            {
+                if (inmaxcount < curcount.value)
+                {
+                    inmaxcount = curcount.value;
+                    inmaxrate = currate;
+                    inmaxsg = fg;
+                }
+                else if (inmaxcount == curcount.value)
+                {
+                    if (currate > inmaxrate)
+                    {
+                        inmaxrate = currate;
+                        inmaxsg = fg;
+                    }
+                }
+            }
+            else
+            {
+                if (outmaxcount < curcount.value)
+                {
+                    outmaxcount = curcount.value;
+                    outmaxrate = currate;
+                    outmaxsg = fg;
+                }
+                else if (outmaxcount == curcount.value)
+                {
+                    if (currate > outmaxrate)
+                    {
+                        outmaxrate = currate;
+                        outmaxsg = fg;
+                    }
+                }
+            }
+        }
+
+        if (outmaxcount > inmaxcount)
+        {
+            return outmaxsg;
+        }
+        else if (outmaxcount < inmaxcount)
+        {
+            return inmaxsg;
+        }
+        else
+        {
+            // 最强室外概率 > 最强室内概率*2 则认为是室外，否则室内
+        	// 170626 if (outmaxrate > inmaxrate * 2)
+        	// 170810 if (outmaxrate > inmaxrate)
+        	if (outmaxrate - 0.1 > inmaxrate)
+            {
+                return outmaxsg;
+            }
+            else
+            {
+                return inmaxsg;
+            }
+        }
+    }
+
+    protected static double GetDistance(double lng1, double lat1, double lng2, double lat2)
+    {
+        //计算y1, y2所在位置的纬度圈长度
+        double dx1 = Math.sin((90.0 - lat1) * 2 * Math.PI / 360.0);
+        double dx2 = Math.sin((90.0 - lat2) * 2 * Math.PI / 360.0);
+
+        double dx = (dx1 + dx2) / 2.0 * (lng1 - lng2) / 360.0 * 40075360;
+        double dy = (lat2 - lat1) / 360.0 * 39940670;
+
+        return (double)(Math.sqrt(dx * dx + dy * dy) + 0.5);
+    }
+}

@@ -1,0 +1,90 @@
+package cn.mastercom.bigdata.conf.cellconfig;
+
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.util.IWriteLogCallBack;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.hadoop.hdfs.HDFSOper;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.HashMap;
+import java.util.Map;
+
+public class GsmCellConfig {
+    private static GsmCellConfig instance;
+    private Map<String, GsmCellInfo> gsmCellInfoMap;
+
+    public static GsmCellConfig GetInstance() {
+        if (null == instance) {
+            synchronized (GsmCellConfig.class) {
+                if (null == instance) {
+                    instance = new GsmCellConfig();
+                }
+            }
+        }
+        return instance;
+    }
+
+    private GsmCellConfig() {
+        gsmCellInfoMap = new HashMap<>();
+    }
+
+    public Map<String, GsmCellInfo> getGsmCellInfoMap() {
+        return gsmCellInfoMap;
+    }
+
+    public boolean loadGsmCell(Configuration configuration) {
+        try {
+            HDFSOper hdfsOper = new HDFSOper(configuration);
+            String gsmCellConfigPath = MainModel.GetInstance().getAppConfig().getGsmCellConfigPath();
+            if (!hdfsOper.checkFileExist(gsmCellConfigPath)) {
+                LOGHelper.GetLogger().writeLog(IWriteLogCallBack.LogType.error, "config not exists: " + gsmCellConfigPath);
+                return false;
+            }
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(hdfsOper.getHdfs().open(new Path(gsmCellConfigPath)), "UTF-8"))) {
+                String line;
+                while (null != (line = reader.readLine())) {
+                    if (0 == line.length()) {
+                        continue;
+                    }
+
+                    try {
+                        String[] split = line.split("\t", -1);
+                        GsmCellInfo gsmCellInfo = GsmCellInfo.FillData(split);
+                        if (gsmCellInfo.lac > 0 && gsmCellInfo.ci > 0) {
+                            gsmCellInfoMap.put(gsmCellKey(gsmCellInfo), gsmCellInfo);
+                        }
+                    } catch (IndexOutOfBoundsException e) {
+                        LOGHelper.GetLogger().writeLog(IWriteLogCallBack.LogType.error,"loadGsmCell error1",
+                                "loadGsmCell error: " +
+                                line, e);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGHelper.GetLogger().writeLog(IWriteLogCallBack.LogType.error,"loadGsmCell error2", "loadGsmCell error",
+                    e);
+            return false;
+        }
+        return true;
+    }
+    private String gsmCellKey(GsmCellInfo gsmCellInfo) {
+        return gsmCellKey(gsmCellInfo.lac, gsmCellInfo.ci);
+    }
+    private String gsmCellKey(int lac, int ci) {
+        return lac + "_" + ci;
+    }
+
+    public  GsmCellInfo getGsmCellInfo(int lac, int ci) {
+        return gsmCellInfoMap.get(gsmCellKey(lac, ci));
+    }
+
+    public static void main(String[] args) {
+        GsmCellConfig.GetInstance().loadGsmCell(new Configuration());
+        GsmCellInfo cellInfo = GsmCellConfig.GetInstance().getGsmCellInfo(Integer.parseInt(args[0]), Integer.parseInt(args[1]));
+        System.out.println(cellInfo.bsic);
+    }
+}

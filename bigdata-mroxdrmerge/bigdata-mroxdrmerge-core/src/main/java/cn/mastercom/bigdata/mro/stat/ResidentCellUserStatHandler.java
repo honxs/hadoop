@@ -1,0 +1,45 @@
+package cn.mastercom.bigdata.mro.stat;
+
+import cn.mastercom.bigdata.StructData.DT_Sample_4G;
+import cn.mastercom.bigdata.mro.stat.struct.StatResidentCellUser;
+import cn.mastercom.bigdata.util.FormatTime;
+import cn.mastercom.bigdata.util.IDSUserChecker;
+import cn.mastercom.bigdata.util.ResultOutputer;
+
+public class ResidentCellUserStatHandler extends AMapStatDo_4G<StatResidentCellUser> {
+    public ResidentCellUserStatHandler(ResultOutputer resultOutputer, int sourceType, int dataType) {
+        super(resultOutputer, sourceType, dataType);
+    }
+
+    @Override
+    protected Object[] getPartitionKeys(DT_Sample_4G sample) {
+        return new Object[]{
+                sample.cityID, sample.IMSI, sample.Eci, FormatTime.RoundTimeForHour(sample.itime), sample.MSISDN
+        };
+    }
+
+    @Override
+    protected StatResidentCellUser createFirstStatItem(DT_Sample_4G sample, Object[] keys) {
+        StatResidentCellUser statResidentCellUser = new StatResidentCellUser();
+        statResidentCellUser.firstDo(sample);
+        return statResidentCellUser;
+    }
+
+    @Override
+    protected boolean statOrNot(DT_Sample_4G sample) {
+        return sample.LteScRSRP > -150 && sample.LteScRSRP < -30 && IDSUserChecker.isIdsUser(sample.IMSI) && isSpecificTime(sample.itime);
+    }
+
+    private static final int SECONDS_OF_AN_HOUR = 3600;
+    // 0:00 - 6:00  9:00 - 12:00  14:00 - 18:00  20:00 - 24:00
+    private boolean isSpecificTime(int time) {
+        int secondsOfDay = time - FormatTime.getRoundDayTime(time);
+        return isInHourInterval(secondsOfDay, 0, 6) ||
+                isInHourInterval(secondsOfDay, 9, 12) ||
+                isInHourInterval(secondsOfDay, 14, 18) ||
+                isInHourInterval(secondsOfDay, 20, 24);
+    }
+    private boolean isInHourInterval(int seconds, int startHour, int endHour) {
+        return SECONDS_OF_AN_HOUR * startHour <= seconds && seconds < SECONDS_OF_AN_HOUR * endHour;
+    }
+}

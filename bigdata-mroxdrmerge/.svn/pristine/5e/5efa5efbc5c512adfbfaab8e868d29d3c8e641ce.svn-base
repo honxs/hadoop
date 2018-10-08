@@ -1,0 +1,285 @@
+package cn.mastercom.bigdata.mapr.stat.eciFilter;
+
+import java.io.IOException;
+
+import org.apache.hadoop.conf.Configurable;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Partitioner;
+
+import cn.mastercom.bigdata.StructData.StaticConfig;
+import cn.mastercom.bigdata.conf.cellconfig.CellConfig;
+import cn.mastercom.bigdata.conf.cellconfig.LteCellInfo;
+import cn.mastercom.bigdata.util.DataAdapterConf.ParseItem;
+import cn.mastercom.bigdata.util.DataAdapterReader;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.hadoop.mapred.DataDealMapperV2;
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.stat.eciFilter.EciFilterDeal;
+import cn.mastercom.bigdata.stat.eciFilter.EciFilterKey;
+import cn.mastercom.bigdata.util.DataGeter;
+
+public class EciFilterMapper {
+
+	public static class EciFilterMapper_MME extends DataDealMapperV2<Object, Text, EciFilterKey, Text> {
+		private String xmString = "";
+		private String[] valstrs;
+		private EciFilterKey mapKey;
+		private long eci;
+
+		private ParseItem parseItem;
+		private DataAdapterReader dataAdapterReader;
+		private int splitMax = -1;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException {
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+
+			parseItem = MainModel.GetInstance().getDataAdapterConfig().getParseItem("S1-MME");
+			if (parseItem == null) {
+				throw new IOException("parse item do not get.");
+			}
+			dataAdapterReader = new DataAdapterReader(parseItem);
+
+			splitMax = parseItem.getSplitMax("Cell_ID");
+			if (splitMax < 0) {
+				throw new IOException("eci pos not right.");
+			}
+
+			// 初始化小区的信息
+			if (!CellConfig.GetInstance().loadLteCell(conf)) {
+				LOGHelper.GetLogger().writeLog(LogType.error, "cellconfig init error 请检查！");
+				throw (new IOException("cellconfig init error 请检查！" + CellConfig.GetInstance().errLog));
+			} else {
+				LOGHelper.GetLogger().writeLog(LogType.error, "cellconfig init error 请检查！");
+			}
+		}
+
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException {
+			super.cleanup(context);
+		}
+
+		protected void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+			xmString = new String(value.toString().getBytes(StaticConfig.UTFCode));
+			valstrs = xmString.toString().split(parseItem.getSplitMark(), splitMax + 2);
+			try {
+				dataAdapterReader.readData(valstrs);
+				eci = dataAdapterReader.GetLongValue("Cell_ID", 0);
+				if (eci <= 0) {
+					return;
+				}
+				// 去工参中找eci对应的信息
+				LteCellInfo lteCellInfo = CellConfig.GetInstance().getLteCell(eci);
+				if (lteCellInfo != null) {
+					mapKey = new EciFilterKey(eci, EciFilterDeal.DATATYPE_MME);
+					context.write(mapKey, value);
+				}
+			} catch (Exception e) {
+				if (MainModel.GetInstance().getCompile().Assert(CompileMark.Debug)) {
+					LOGHelper.GetLogger().writeLog(LogType.error, "mme format error：" + xmString, e);
+				}
+			}
+		}
+	}
+
+	public static class EciFilterMapper_HTTP extends DataDealMapperV2<Object, Text, EciFilterKey, Text> {
+		private String xmString = "";
+		private String[] valstrs;
+		private EciFilterKey mapKey;
+		private long eci;
+
+		private ParseItem parseItem;
+		private DataAdapterReader dataAdapterReader;
+		private int splitMax = -1;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException {
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+
+			parseItem = MainModel.GetInstance().getDataAdapterConfig().getParseItem("S1-HTTP");
+			if (parseItem == null) {
+				throw new IOException("parse item do not get.");
+			}
+			dataAdapterReader = new DataAdapterReader(parseItem);
+
+			splitMax = parseItem.getSplitMax("Cell_ID");
+			if (splitMax < 0) {
+				throw new IOException("eci pos not right.");
+			}
+
+			// 初始化小区的信息
+			if (!CellConfig.GetInstance().loadLteCell(conf)) {
+				LOGHelper.GetLogger().writeLog(LogType.error, "cellconfig init error 请检查！");
+				throw (new IOException("cellconfig init error 请检查！" + CellConfig.GetInstance().errLog));
+			}
+		}
+
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException {
+			super.cleanup(context);
+		}
+
+		protected void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+			xmString = new String(value.toString().getBytes(StaticConfig.UTFCode));
+			valstrs = xmString.toString().split(parseItem.getSplitMark(), splitMax + 2);
+			try {
+				dataAdapterReader.readData(valstrs);
+				eci = dataAdapterReader.GetLongValue("Cell_ID", 0);
+				if (eci <= 0) {
+					return;
+				}
+				// 去工参中找eci对应的信息
+				LteCellInfo lteCellInfo = CellConfig.GetInstance().getLteCell(eci);
+				if (lteCellInfo != null) {
+					mapKey = new EciFilterKey(eci, EciFilterDeal.DATATYPE_HTTP);
+					context.write(mapKey, value);
+				}
+			} catch (Exception e) {
+				if (MainModel.GetInstance().getCompile().Assert(CompileMark.Debug)) {
+					LOGHelper.GetLogger().writeLog(LogType.error, "http format error：" + xmString, e);
+				}
+			}
+		}
+	}
+
+	public static class EciFilterMapper_MRO extends DataDealMapperV2<Object, Text, EciFilterKey, Text> {
+		private String xmString = "";
+		private String[] valstrs;
+		private EciFilterKey mapKey;
+		private long eci;
+		private int enbid;
+		private int CellId;
+		private String tmStr = "";
+
+		private ParseItem parseItem;
+		private DataAdapterReader dataAdapterReader;
+		private int splitMax = -1;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException {
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+
+			parseItem = MainModel.GetInstance().getDataAdapterConfig().getParseItem("MRO-SRC");
+			if (parseItem == null) {
+				throw new IOException("parse item do not get.");
+			}
+			dataAdapterReader = new DataAdapterReader(parseItem);
+
+			splitMax = parseItem.getSplitMax("CellId");
+			if (splitMax < 0) {
+				throw new IOException("eci pos not right.");
+			}
+
+			// 初始化小区的信息
+			if (!CellConfig.GetInstance().loadLteCell(conf)) {
+				LOGHelper.GetLogger().writeLog(LogType.error, "cellconfig init error 请检查！");
+				throw (new IOException("cellconfig init error 请检查！" + CellConfig.GetInstance().errLog));
+			}
+		}
+
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException {
+			super.cleanup(context);
+		}
+
+		protected void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+			xmString = new String(value.toString().getBytes(StaticConfig.UTFCode));
+			valstrs = xmString.toString().split(parseItem.getSplitMark(), splitMax + 2);
+			try {
+				dataAdapterReader.readData(valstrs);
+				enbid = dataAdapterReader.GetIntValue("ENBId", -1);
+				tmStr = dataAdapterReader.GetStrValue("CellId", "0");
+				if (tmStr.indexOf(":") > 0) {
+					CellId = DataGeter.GetInt(tmStr.substring(0, tmStr.indexOf(":")));
+				} else if (tmStr.indexOf("-") > 0) {
+					CellId = DataGeter.GetInt(tmStr.substring(tmStr.indexOf("-") + 1));
+				} else {
+					CellId = DataGeter.GetInt(tmStr);
+				}
+
+				if (CellId > 256) {
+					CellId = CellId % 256;
+				}
+
+				eci = enbid * 256L + CellId;
+				if (eci <= 0) {
+					return;
+				}
+				// 去工参中找eci对应的信息
+				LteCellInfo lteCellInfo = CellConfig.GetInstance().getLteCell(eci);
+				if (lteCellInfo != null) {
+					mapKey = new EciFilterKey(eci, EciFilterDeal.DATATYPE_MRO);
+					context.write(mapKey, value);
+				}
+			} catch (Exception e) {
+				if (MainModel.GetInstance().getCompile().Assert(CompileMark.Debug)) {
+					LOGHelper.GetLogger().writeLog(LogType.error, "http format error：" + xmString, e);
+				}
+			}
+		}
+	}
+
+	public static class EciFilterMapper_XDRLOCATION extends DataDealMapperV2<Object, Text, EciFilterKey, Text> {
+		private String[] xmString;
+		private EciFilterKey mapKey;
+		private long eci;
+
+		@Override
+		protected void setup(Context context) throws IOException, InterruptedException {
+			super.setup(context, MainModel.GetInstance().getAppConfig().getExcludeIpList());
+			// 初始化小区的信息
+			if (!CellConfig.GetInstance().loadLteCell(conf)) {
+				LOGHelper.GetLogger().writeLog(LogType.error, "cellconfig init error 请检查！");
+				throw (new IOException("cellconfig init error 请检查！" + CellConfig.GetInstance().errLog));
+			}
+		}
+
+		@Override
+		protected void cleanup(Context context) throws IOException, InterruptedException {
+			super.cleanup(context);
+		}
+
+		protected void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+			try {
+				xmString = value.toString().split("\t");
+				eci = Long.parseLong(xmString[1]);
+				if (eci <= 0) {
+					return;
+				}
+				// 去工参中找eci对应的信息
+				LteCellInfo lteCellInfo = CellConfig.GetInstance().getLteCell(eci);
+				if (lteCellInfo != null) {
+					mapKey = new EciFilterKey(eci, EciFilterDeal.DATATYPE_XDRLOCATION);
+					context.write(mapKey, value);
+				}
+			} catch (Exception e) {
+				if (MainModel.GetInstance().getCompile().Assert(CompileMark.Debug)) {
+					LOGHelper.GetLogger().writeLog(LogType.error, "xdrlocation format error：" + value, e);
+				}
+			}
+		}
+	}
+
+	public static class EciFilterPartitioner extends Partitioner<EciFilterKey, Text> implements Configurable {
+		private Configuration conf = null;
+
+		@Override
+		public Configuration getConf() {
+			return conf;
+		}
+
+		@Override
+		public void setConf(Configuration conf) {
+			this.conf = conf;
+		}
+
+		@Override
+		public int getPartition(EciFilterKey key, Text text, int reduceNum) {
+			// TODO Auto-generated method stub
+			return Math.abs(("" + key.getEci()).hashCode()) % reduceNum;
+		}
+
+	}
+}

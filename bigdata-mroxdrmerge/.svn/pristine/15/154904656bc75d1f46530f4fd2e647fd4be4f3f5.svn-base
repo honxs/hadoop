@@ -1,0 +1,176 @@
+package cn.mastercom.bigdata.evt.locall.stat;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.util.IWriteLogCallBack;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.ResultOutputer;
+
+public class EventDataCellStat extends BaseStatDo
+{
+	private Map<String, EventDataCell> dataMap;
+	private int stime;
+	private int etime;
+	private int resultTBName;
+	
+	private ResultOutputer resultOutputer;
+	private StringBuffer sb;
+
+	public EventDataCellStat(int stime, int etime, int resultTBName, ResultOutputer resultOutputer)
+	{
+		this.stime = stime;
+		this.etime = etime;
+		this.resultOutputer = resultOutputer;
+		this.resultTBName = resultTBName;
+		dataMap = new HashMap<String, EventDataCell>();
+		sb = new StringBuffer();
+	}
+
+	@Override
+	public int statSub(Object o)
+	{
+		EventData event = (EventData) o;
+		
+		if(event.iEci <= 0)
+		{
+			return 0;
+		}
+		if (MainModel.GetInstance().getCompile().Assert(CompileMark.ShanXiJin))
+		{
+			String mobiliType = "";
+			if ((XdrLocallexDeal2.ImeiMobileTypeMap != null) && (XdrLocallexDeal2.ImeiMobileTypeMap.size() > 0)) {
+				if (event.imei.length() < 8){
+					mobiliType = "";
+				}
+				else {
+					try {
+						mobiliType = (String)XdrLocallexDeal2.ImeiMobileTypeMap.get(event.imei.substring(0, 8));
+					} catch (Exception e) {
+                        LOGHelper.GetLogger().writeLog(IWriteLogCallBack.LogType.error,"EventDataCellStat ShanXiJin ImeiMobileTypeMap Exception",
+                                "EventDataCellStat ShanXiJin ImeiMobileTypeMap Exception: " + e.getMessage(),e);
+					}
+				}
+				if (mobiliType == null) {
+					mobiliType = "";
+				}
+			}
+
+			EventDataCell item = (EventDataCell)this.dataMap.get(event.iEci + "," + event.lteScRSRP + "," + mobiliType + "," + event.imei + "#");
+			if (item == null)
+			{
+				Random random = new Random();
+				event.iProcedureType = random.nextInt(100000);
+				item = new EventDataCell(event.iCityID, event.iEci, this.stime, event.lteScRSRP, mobiliType, event.imei);
+				this.dataMap.put(item.iECI + "," + event.lteScRSRP + "," + mobiliType + "," + event.imei + "," + random.nextInt(100000), item);
+			}
+
+			item.stat(event);
+			if (this.dataMap.size() > 10000) {
+				outFinalReusltSub();
+				this.dataMap.clear();
+				item.statModelMap.clear();
+			}
+
+			return 0;
+		}
+
+		EventDataCell item = dataMap.get(String.valueOf(event.iEci));
+		if(item == null)
+		{
+			item = new EventDataCell(event.iCityID, event.iEci, stime);
+			dataMap.put(String.valueOf(item.iECI), item);
+		}
+		item.stat(event);
+		return 0;
+		}
+//	}
+
+	@Override
+	public int outDealingResultSub()
+	{
+		return 0;
+	}
+
+	@Override
+	public int outFinalReusltSub()
+	{
+		for (EventDataCell item : dataMap.values())
+		{
+			
+			try
+			{
+				sb.delete(0, sb.length());
+				item.toString(sb);
+				resultOutputer.pushData(resultTBName, sb.toString());
+			}
+			catch (Exception e)
+			{
+                LOGHelper.GetLogger().writeLog(IWriteLogCallBack.LogType.error,"EventDataCellStat.outFinalReusltSub Exception",
+                        "EventDataCellStat.outFinalReusltSub Exception: " + e.getMessage(),e);
+			}
+		}
+		return 0;
+	}
+      	
+	public class EventDataCell extends BaseEventDataStatDo
+	{
+	    protected int iCityID;
+	    protected long iECI;
+	    protected int iTime;
+	    protected int rsrp;
+	    protected String mobileType="";
+		protected String imei = "";
+	    public EventDataCell(int iCityID, long iECI, int iTime)
+	    {	
+	    	super();
+	    	
+	    	this.iCityID = iCityID;
+	    	this.iECI = iECI;
+	    	this.iTime = iTime;
+	    }
+
+		public EventDataCell(int iCityID, long iECI, int iTime, int rsrp, String mobileType, String imei)
+		{
+			this.iCityID = iCityID;
+			this.iECI = iECI;
+			this.iTime = iTime;
+			this.rsrp = rsrp;
+			this.mobileType = mobileType;
+			this.imei = imei;
+		}
+
+
+		@Override
+		public int toString(StringBuffer sb)
+		{
+			int pos =0;
+			for (Map.Entry<EventDataStatKey, EventDataStruct> statModelEntry : statModelMap.entrySet())
+			{
+				pos++;	
+				sb.append(iCityID);sb.append("\t");
+				sb.append(iECI);sb.append("\t");
+				sb.append(statModelEntry.getKey().getInterface());sb.append("\t");
+				sb.append(statModelEntry.getKey().getKpiset());sb.append("\t");
+				sb.append(iTime);sb.append("\t");
+				if(MainModel.GetInstance().getCompile().Assert(CompileMark.ShanXiJin)){
+					sb.append(this.rsrp); sb.append("\t");
+					sb.append(this.mobileType); sb.append("\t");
+					sb.append(this.imei); sb.append("\t");
+				}
+				statModelEntry.getValue().toString(sb);		
+				if(pos<statModelMap.size()){
+					sb.append("\n");			
+				}
+			}
+			return 0;
+		}
+	      
+	      
+	}
+
+}

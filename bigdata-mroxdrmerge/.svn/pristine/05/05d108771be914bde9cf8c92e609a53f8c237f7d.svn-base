@@ -1,0 +1,101 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<configuration>
+<!-- 	<HadoopHdfsPort>9000</HadoopHdfsPort>
+	<HadoopUser></HadoopUser>  
+	<HadoopHost>nmdsj133nds/user/gaowei</HadoopHost>   -->
+	<LteCellConfigPath>/user/gaowei/mt_wlyh/Data/config/tb_cfg_city_cell_neimenggu.txt</LteCellConfigPath>
+	<MreDataPath>/mt_wlyh/Data/NeiMeng/mre/${yyMMdd}</MreDataPath>
+	<MroXdrMergePath>/mt_wlyh/Data/NeiMeng/mroxdrmerge</MroXdrMergePath>
+	<MroDataPath>/mt_wlyh/Data/mro</MroDataPath>
+	<MTMroDataPath>/mt_wlyh/Data/NeiMeng/mromt</MTMroDataPath>
+	<OrigLocationPath>/flume/location</OrigLocationPath>
+	<PigBinPath>/opt/pig-0.15.0/bin</PigBinPath>
+	<OrigXdrPath>/flume/xdr</OrigXdrPath>
+	<XdrDataPath>/result/test</XdrDataPath>
+	<GsmCellConfigPath>/mt_wlyh/Data/config/tb_cfg_city_cell_gsm.txt</GsmCellConfigPath>
+	<TDCellConfigPath>/mt_wlyh/Data/config/tb_cfg_city_cell_td.txt</TDCellConfigPath>
+	<FigureConfigPath>/user/gaowei/mt_wlyh/Data/config/cellfigure</FigureConfigPath>
+	<SimuLocConfigPath>/user/gaowei/mt_wlyh/Data/config/simuloc</SimuLocConfigPath>
+	<SimuInSize>5</SimuInSize>
+	<SimuOutSize>10</SimuOutSize>
+	<SimuOutAtte>2</SimuOutAtte>
+	<!-- reduce 的数量 -->
+	<reduceNmu>1000</reduceNmu>
+	<!--前后扩展场强的范围 -->
+	<range>6</range>
+	<!--栅格中至少至少匹配到的小区数，小于这个数丢弃该栅格 -->
+	<CellNum>1</CellNum>
+	<!-- -经度加减随机数范围 -->
+	<ilongitudRrandomWidth>0.0002</ilongitudRrandomWidth>
+	<!-- -纬度加减随机数范围 -->
+	<ilatitudeRrandomWidth>0.00018</ilatitudeRrandomWidth>
+	<pianyiNum>1</pianyiNum>
+	<!-- cqt、dt 划分比例分界线 -->
+	<percent>0.51</percent>
+	<!-- figureFixFlag 是否用指纹库定位 -->
+	<figureFixFlag>1</figureFixFlag>
+	<!-- 单个map分配的核心数 -->
+	<mapVcore>1</mapVcore>
+	<!-- 单个reduce分配的核心数 -->
+	<reduceVcore>2</reduceVcore>
+	<!-- lzo库路径 -->
+	<lzoPath>/usr/local/lzo/lib</lzoPath>
+	<!-- map内存大小 兆为单位 -->
+	<mapMemory>1024</mapMemory>
+	<!-- reduce内存大小 兆为单位 -->
+	<reduceMemory>2048</reduceMemory>
+	<!--cellgridMerge中同一个cellgrid的sample个数极限值 -->
+	<limitSampleNum>200</limitSampleNum>
+	<!-- 栅格大小 -->
+	<size>10</size>
+	<!-- cellgrid原始存放路径 -->
+	<cellgridPath>/mt_wlyh/Data/cellgrid</cellgridPath>
+	<!-- cellgridmerge后存放路径 -->
+	<cellgridConfigPath>/mt_wlyh/Data/adjustFigure</cellgridConfigPath>
+		<!-- 用户常驻小区 -->
+	<path_ImsiCellLocPath>\mt_wlyh\Data\config\ImsiResidentCell</path_ImsiCellLocPath>
+	<!-- 苏研平台id -->
+	<SuYanId>80ca02329e5bdfd0bc79</SuYanId>
+	<!-- 苏研平台key -->
+	<SunYanKey>facd3668468f2b4bb3e4064b9d88ea414ac3acfc</SunYanKey>
+	<SunYanQueue>root.bdoc.renter_1.renter_9.dev_571</SunYanQueue>
+	<!--高铁相关配置-->
+	<RailCellConf>/user/gaowei/mt_wlyh/Data/config/rail/cellconf</RailCellConf>
+	<RailConf>/user/gaowei/mt_wlyh/Data/config/rail/railconf</RailConf>
+	<RailRailStation>/user/gaowei/mt_wlyh/Data/config/rail/stationconf/railstation.txt</RailRailStation>
+	<RailRRU>/user/gaowei/mt_wlyh/Data/config/rail/rruconf/rru.txt</RailRRU>
+	
+	<huaweiMdtLogDataPath>/mt_wlyh/Data/NeiMeng/MDT/LOG/{yyMMdd}</huaweiMdtLogDataPath>
+	<huaweiMdtImmDataPath>/mt_wlyh/Data/NeiMeng/MDT/IMM/{yyMMdd}</huaweiMdtImmDataPath>
+	
+	<cellBuildPath>/user/gaowei/mt_wlyh/Data/config/cellBuildConfig</cellBuildPath>
+	<imeiCapbilityPath>/user/gaowei/mt_wlyh/Data/config/imei_learn.txt</imeiCapbilityPath>
+	<dealSizeMap_M>512</dealSizeMap_M>
+	<dealSizeReduce_M>1024</dealSizeReduce_M>
+	<slowReduce>0.95</slowReduce>
+	<failPrecentMap>5</failPrecentMap>
+	<failPrecentReduce>5</failPrecentReduce>
+	
+	<MergeUserResidentDayNum>-14</MergeUserResidentDayNum>
+	
+	<!-- 是否输出源数据，加上定位信息  是填写yes,默认为false -->
+	<outXdrData>yes</outXdrData>
+	<!-- 是否输出 event统计  是填写yes,默认为false -->
+	<toEventData>false</toEventData>
+	
+	<outSuccessData>false</outSuccessData>
+	<outFailData>false</outFailData>
+
+		<!-- 高铁区间小区配置 -->
+	<hsrSectionCellPath>/user/gaowei/mt_wlyh/Data/config/hsr/tb_hsr_cfg_section_cell.txt</hsrSectionCellPath>
+	<!-- 高铁站小区配置 -->
+	<hsrStationCellPath>/user/gaowei/mt_wlyh/Data/config/hsr/tb_hsr_cfg_station_cell.txt</hsrStationCellPath>
+	<!-- 高铁站配置 -->
+	<hsrStationPath>/user/gaowei/mt_wlyh/Data/config/hsr/tb_hsr_cfg_station.txt</hsrStationPath>
+	<!-- 高铁区间配置 -->
+	<hsrSectionPath>/user/gaowei/mt_wlyh/Data/config/hsr/tb_hsr_cfg_section.txt</hsrSectionPath>
+	<!-- 高铁路段配置 -->
+	<hsrSegmentPath>/user/gaowei/mt_wlyh/Data/config/hsr/tb_hsr_cfg_segment.txt</hsrSegmentPath>
+	<!-- 高铁RRU配置 -->
+	<hsrSectionRruPath>/user/gaowei/mt_wlyh/Data/config/hsr/tb_hsr_cfg_rru.txt</hsrSectionRruPath>
+</configuration>

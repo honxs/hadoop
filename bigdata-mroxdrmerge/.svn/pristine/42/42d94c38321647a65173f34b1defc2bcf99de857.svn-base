@@ -1,0 +1,91 @@
+package cn.mastercom.bigdata.spark.mroxdrmerge;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.DataAdapterConf.ParseItem;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.util.spark.HiveHelper;
+import cn.mastercom.bigdata.util.spark.RowAdapterReader;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+
+import org.apache.spark.sql.Row;
+
+import scala.Tuple2;
+
+public class MapByCellFunc_MroRow implements org.apache.spark.api.java.function.PairFlatMapFunction<Row, String, String> 
+{
+	private static final long serialVersionUID = 1L;
+	
+	private int itime;
+	private String tmStr = "";
+	private long eci = -1;
+	private int CellId = -1;
+	private int ENBId = -1;
+	private String xmString = "";
+	private String[] valstrs;
+	private Date d_beginTime;
+	private long ltime;
+	private StringBuffer tmSb = new StringBuffer();
+	
+	private ParseItem parseItem;
+	private RowAdapterReader dataAdapterReader;
+	private int splitMax = -1;
+	
+	public MapByCellFunc_MroRow() throws Exception
+	{
+		parseItem = MainModel.GetInstance().getDataAdapterConfig().getParseItem("MRO-MERGE");
+		if(parseItem == null)
+		{
+			throw new IOException("parse item do not get.");
+		}
+	    dataAdapterReader = new RowAdapterReader(parseItem);
+	    
+	    splitMax = parseItem.getSplitMax("beginTime,ENBId,CellId,Eci");
+	    if(splitMax < 0)
+	    {
+	    	throw new IOException("time or imsi pos not right.");
+	    }
+	}
+	
+
+	@Override
+	public Iterable<Tuple2<String, String>> call(Row value) throws Exception
+	{		
+		try
+		{
+			dataAdapterReader.readData(value);
+			
+			d_beginTime = dataAdapterReader.GetDateValue("beginTime", new Date(1970,1,1)); 
+			ltime = d_beginTime.getTime();
+			ENBId = dataAdapterReader.GetIntValue("ENBId", -1);
+			CellId = dataAdapterReader.GetIntValue("CellId", -1);
+			eci = dataAdapterReader.GetIntValue("Eci", -1);
+			
+			if(CellId <= 255 && CellId >= 0 && eci <= 0)
+			{
+				eci = ENBId*256+CellId;
+			}
+			
+			if(ltime <= 100 || eci <= 0)
+			{
+				return new ArrayList<Tuple2<String, String>>();
+			}
+			
+			tmStr = eci + "_" + (ltime/1000L/MapByCellFunc_XdrLocation.TimeSpan*MapByCellFunc_XdrLocation.TimeSpan);
+			
+			String dataStr = HiveHelper.RowToString(tmSb, value);		
+			Tuple2<String, String> tp = new Tuple2<String, String>(tmStr, dataStr);
+			return Arrays.asList(tp);
+		}
+		catch (Exception e)
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "get data error : " + xmString, e);
+		}
+		return new ArrayList<Tuple2<String, String>>();
+	}
+
+}

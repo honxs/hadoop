@@ -1,0 +1,626 @@
+package cn.mastercom.bigdata.mro.loc;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
+
+import cn.mastercom.bigdata.StructData.DT_Sample_4G;
+import cn.mastercom.bigdata.StructData.NC_LTE;
+import cn.mastercom.bigdata.StructData.SIGNAL_MR_All;
+import cn.mastercom.bigdata.StructData.StaticConfig;
+import cn.mastercom.bigdata.conf.cellconfig.CellConfig;
+import cn.mastercom.bigdata.conf.cellconfig.LteCellInfo;
+
+import cn.mastercom.bigdata.mro.loc.UserActStat.UserActTime;
+import cn.mastercom.bigdata.mro.loc.UserActStat.UserCell;
+import cn.mastercom.bigdata.mro.loc.UserActStat.UserCellAll;
+import cn.mastercom.bigdata.mro.stat.tableEnum.MroCsFgTableEnum;
+import cn.mastercom.bigdata.mroxdrmerge.CompileMark;
+import cn.mastercom.bigdata.mroxdrmerge.MainModel;
+import cn.mastercom.bigdata.util.GisFunction;
+import cn.mastercom.bigdata.util.LOGHelper;
+import cn.mastercom.bigdata.util.MrLocation;
+import cn.mastercom.bigdata.util.ResultOutputer;
+import cn.mastercom.bigdata.util.IWriteLogCallBack.LogType;
+import cn.mastercom.bigdata.xdr.loc.ResultHelper;
+
+public class FigureFixedOutput
+{
+	public List<SIGNAL_MR_All> FigureMroItemList = new ArrayList<SIGNAL_MR_All>();
+	private ResultOutputer resultOutputer;
+	public Configuration conf;
+
+	protected final Log LOG = LogFactory.getLog(FigureFixedOutput.class);
+
+	private StringBuilder tmSb = new StringBuilder();
+
+	private FgStatDeal statDeal;
+	private FgStatDeal_DT statDeal_DT;
+	private FgStatDeal_CQT statDeal_CQT;
+	private UserActStatMng userActStatMng;
+
+	public FigureFixedOutput(Configuration conf, ResultOutputer resultOutputer)
+	{
+		this.conf = conf;
+		this.resultOutputer = resultOutputer;
+	}
+
+	public void setup() throws IOException, InterruptedException
+	{
+		// 初始化小区的信息
+		if (!CellConfig.GetInstance().loadLteCell(conf))
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "cellconfig init error 请检查！");
+			throw (new IOException("cellconfig init error 请检查！" + CellConfig.GetInstance().errLog));
+		}
+
+		statDeal = new FgStatDeal(resultOutputer);
+		statDeal_DT = new FgStatDeal_DT(resultOutputer);
+		statDeal_CQT = new FgStatDeal_CQT(resultOutputer);
+		userActStatMng = new UserActStatMng();
+
+		// 打印状态日志
+		LOGHelper.GetLogger().writeLog(LogType.info, "cellconfig init count is : " + CellConfig.GetInstance().getLteCellInfoMap().size());
+	}
+
+	public void cleanup() throws IOException, InterruptedException
+	{
+		try
+		{
+			outAllData();
+		}
+		catch (Exception e)
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "output data error ", e);
+		}
+	}
+
+	// 吐出用户过程数据，为了防止内存过多
+	public void outDealingData()
+	{
+		dealSample();
+
+		// 天数据吐出/////////////////////////////////////////////////////////////////////////////////////
+		statDeal.outDealingData();
+		statDeal_DT.outDealingData();
+		statDeal_CQT.outDealingData();
+
+		// 如果用户数据大于10000个，就吐出去先
+		if (userActStatMng.getUserActStatMap().size() > 10000)
+		{
+			userActStatMng.finalStat();
+
+			// 用户行动信息输出
+			for (UserActStat userActStat : userActStatMng.getUserActStatMap().values())
+			{
+				try
+				{
+					StringBuffer sb = new StringBuffer();
+					String TabMark = "\t";
+					for (UserActTime userActTime : userActStat.userActTimeMap.values())
+					{
+						for (UserCellAll userActAll : userActTime.userCellAllMap.values())
+						{
+							sb.delete(0, sb.length());
+
+							sb.append(0);// cityid
+							sb.append(TabMark);
+							sb.append(userActStat.imsi);
+							sb.append(TabMark);
+							sb.append(userActStat.msisdn);
+							sb.append(TabMark);
+							sb.append(userActTime.stime);
+							sb.append(TabMark);
+							sb.append(userActTime.etime);
+							sb.append(TabMark);
+
+							// 主服小区
+							UserCell mainUserCell = userActAll.getMainUserCell();
+							sb.append(userActAll.eci);
+							sb.append(TabMark);
+							sb.append(0);
+							sb.append(TabMark);
+							sb.append(userActAll.eci);
+							sb.append(TabMark);
+							sb.append(mainUserCell.rsrpSum);
+							sb.append(TabMark);
+							sb.append(mainUserCell.rsrpTotal);
+							sb.append(TabMark);
+							sb.append(mainUserCell.rsrpMaxMark);
+							sb.append(TabMark);
+							sb.append(mainUserCell.rsrpMinMark);
+
+							resultOutputer.pushData(MroCsFgTableEnum.fpuseractcell.getIndex(), sb.toString());
+
+							// 邻区
+							List<UserCell> userCellList = userActAll.getUserCellList();
+							int sn = 1;
+							for (UserCell userCell : userCellList)
+							{
+								if (userCell.eci == userActAll.eci)
+								{
+									continue;
+								}
+
+								sb.delete(0, sb.length());
+								sb.append(0);// cityid
+								sb.append(TabMark);
+								sb.append(userActStat.imsi);
+								sb.append(TabMark);
+								sb.append(userActStat.msisdn);
+								sb.append(TabMark);
+								sb.append(userActTime.stime);
+								sb.append(TabMark);
+								sb.append(userActTime.etime);
+								sb.append(TabMark);
+
+								sb.append(userActAll.eci);
+								sb.append(TabMark);
+								sb.append(sn);
+								sb.append(TabMark);
+								sb.append(userCell.eci);
+								sb.append(TabMark);
+								sb.append(userCell.rsrpSum);
+								sb.append(TabMark);
+								sb.append(userCell.rsrpTotal);
+								sb.append(TabMark);
+								sb.append(userCell.rsrpMaxMark);
+								sb.append(TabMark);
+								sb.append(userCell.rsrpMinMark);
+								// curText.set(sb.toString());
+								resultOutputer.pushData(MroCsFgTableEnum.fpuseractcell.getIndex(), sb.toString());
+								sn++;
+							}
+						}
+					}
+				}
+				catch (Exception e)
+				{
+					LOGHelper.GetLogger().writeLog(LogType.error, "user action error", e);
+				}
+			}
+			userActStatMng = new UserActStatMng();
+		}
+	}
+
+	private void outAllData()
+	{
+		statDeal.outAllData();
+		statDeal_DT.outAllData();
+		statDeal_CQT.outAllData();
+
+		userActStatMng.finalStat();
+		// 用户行动信息输出
+		for (UserActStat userActStat : userActStatMng.getUserActStatMap().values())
+		{
+			try
+			{
+				StringBuffer sb = new StringBuffer();
+				String TabMark = "\t";
+				for (UserActTime userActTime : userActStat.userActTimeMap.values())
+				{
+					for (UserCellAll userActAll : userActTime.userCellAllMap.values())
+					{
+						sb.delete(0, sb.length());
+
+						sb.append(0);// cityid
+						sb.append(TabMark);
+						sb.append(userActStat.imsi);
+						sb.append(TabMark);
+						sb.append(userActStat.msisdn);
+						sb.append(TabMark);
+						sb.append(userActTime.stime);
+						sb.append(TabMark);
+						sb.append(userActTime.etime);
+						sb.append(TabMark);
+
+						// 主服小区
+						UserCell mainUserCell = userActAll.getMainUserCell();
+						sb.append(userActAll.eci);
+						sb.append(TabMark);
+						sb.append(0);
+						sb.append(TabMark);
+						sb.append(userActAll.eci);
+						sb.append(TabMark);
+						sb.append(mainUserCell.rsrpSum);
+						sb.append(TabMark);
+						sb.append(mainUserCell.rsrpTotal);
+						sb.append(TabMark);
+						sb.append(mainUserCell.rsrpMaxMark);
+						sb.append(TabMark);
+						sb.append(mainUserCell.rsrpMinMark);
+
+						resultOutputer.pushData(MroCsFgTableEnum.fpuseractcell.getIndex(), sb.toString());
+
+						// 邻区
+						List<UserCell> userCellList = userActAll.getUserCellList();
+						int sn = 1;
+						for (UserCell userCell : userCellList)
+						{
+							if (userCell.eci == userActAll.eci)
+							{
+								continue;
+							}
+
+							sb.delete(0, sb.length());
+							sb.append(0);// cityid
+							sb.append(TabMark);
+							sb.append(userActStat.imsi);
+							sb.append(TabMark);
+							sb.append(userActStat.msisdn);
+							sb.append(TabMark);
+							sb.append(userActTime.stime);
+							sb.append(TabMark);
+							sb.append(userActTime.etime);
+							sb.append(TabMark);
+
+							sb.append(userActAll.eci);
+							sb.append(TabMark);
+							sb.append(sn);
+							sb.append(TabMark);
+							sb.append(userCell.eci);
+							sb.append(TabMark);
+							sb.append(userCell.rsrpSum);
+							sb.append(TabMark);
+							sb.append(userCell.rsrpTotal);
+							sb.append(TabMark);
+							sb.append(userCell.rsrpMaxMark);
+							sb.append(TabMark);
+							sb.append(userCell.rsrpMinMark);
+
+							resultOutputer.pushData(MroCsFgTableEnum.fpuseractcell.getIndex(), sb.toString());
+							sn++;
+						}
+
+					}
+				}
+			}
+			catch (Exception e)
+			{
+				LOGHelper.GetLogger().writeLog(LogType.error, "user action error", e);
+			}
+		}
+		userActStatMng.getUserActStatMap().clear();
+		userActStatMng = new UserActStatMng();
+	}
+
+	public void dealSample()
+	{
+		DT_Sample_4G sample = new DT_Sample_4G();
+		int dist;
+		int maxRadius = 6000;
+
+		for (SIGNAL_MR_All data : FigureMroItemList)
+		{
+
+			sample.Clear();
+
+			// 如果采样点过远就需要筛除
+			LteCellInfo lteCellInfo = CellConfig.GetInstance().getLteCell(data.tsc.Eci);
+			dist = -1;
+			if (lteCellInfo != null)
+			{
+				if (3 * lteCellInfo.radius <= 1000)// 没有理想覆盖的数据
+				{
+					maxRadius = 1000;
+				}
+				else if (3 * lteCellInfo.radius >= 3000)
+				{
+					maxRadius = 3000;
+				}
+				else
+				{
+					maxRadius = 3 * lteCellInfo.radius;
+				}
+				if (data.tsc.longitude > 0 && data.tsc.latitude > 0 && lteCellInfo.ilongitude > 0 && lteCellInfo.ilatitude > 0)
+				{
+					dist = (int) GisFunction.GetDistance(data.tsc.longitude, data.tsc.latitude, lteCellInfo.ilongitude, lteCellInfo.ilatitude);
+				}
+			}
+			data.dist = dist;
+			if (dist > maxRadius)
+			{
+				data.dist = -1000000;
+				data.tsc.longitude = 0;
+				data.tsc.latitude = 0;
+				data.testType = StaticConfig.TestType_OTHER;
+				data.samState = 0;
+				data.locSource = 0;
+			}
+
+			// 基于Ta进行筛
+			if (data.tsc.LteScTadv >= 15 && data.tsc.LteScTadv < 1282)
+			{
+				double taDist = MrLocation.calcDist(data.tsc.LteScTadv, data.tsc.LteScRTTD);
+				if (dist > taDist * 1.2)
+				{
+					data.dist = -1;
+					data.tsc.longitude = 0;
+					data.tsc.latitude = 0;
+					data.testType = StaticConfig.TestType_OTHER;
+				}
+			}
+
+			statMro(sample, data);
+			statKpi(sample);
+		}
+	}
+
+	public void statKpi(DT_Sample_4G sample)
+	{
+		// cpe不参与kpi运算
+		if (sample.testType == StaticConfig.TestType_CPE)
+		{
+			return;
+		}
+
+		statDeal.dealSample(sample);
+		userActStatMng.stat(sample);
+
+		// StaticConfig.TestType_DT_EX 不参与运算
+		if (sample.testType == StaticConfig.TestType_DT)
+		{
+			statDeal_DT.dealSample(sample);
+		}
+
+		if (sample.testType == StaticConfig.TestType_CQT)
+		{
+			statDeal_CQT.dealSample(sample);
+		}
+
+	}
+
+	private void statMro(DT_Sample_4G tsam, SIGNAL_MR_All tTemp)
+	{
+		tsam.ibuildingID = tTemp.ibuildingID; // 标识经纬度来源
+		tsam.iheight = tTemp.iheight;
+		tsam.simuLatitude = tTemp.simuLatitude;
+		tsam.simuLongitude = tTemp.simuLongitude;
+		tsam.testType = tTemp.testType;
+		tsam.locSource = tTemp.locSource;
+		tsam.cityID = tTemp.tsc.cityID;
+		tsam.itime = tTemp.tsc.beginTime;
+		tsam.wtimems = (short) (tTemp.tsc.beginTimems);
+		tsam.ilongitude = tTemp.tsc.longitude;
+		tsam.ilatitude = tTemp.tsc.latitude;
+		tsam.IMSI = tTemp.tsc.IMSI;
+		tsam.UETac = tTemp.UETac;
+		tsam.iLAC = (int) getValidData(tsam.iLAC, tTemp.tsc.TAC);
+		tsam.iCI = (long) getValidData(tsam.iCI, tTemp.tsc.CellId);
+		tsam.Eci = (long) getValidData(tsam.Eci, tTemp.tsc.Eci);
+
+		tsam.eventType = 0;
+		tsam.ENBId = (int) getValidData(tsam.ENBId, tTemp.tsc.ENBId);
+		tsam.UserLabel = tTemp.tsc.UserLabel;
+		tsam.CellId = (long) getValidData(tsam.CellId, tTemp.tsc.CellId);
+		tsam.Earfcn = tTemp.tsc.Earfcn;
+		tsam.SubFrameNbr = tTemp.tsc.SubFrameNbr;
+		tsam.MmeCode = (int) getValidData(tsam.MmeCode, tTemp.tsc.MmeCode);
+		tsam.MmeGroupId = (int) getValidData(tsam.MmeGroupId, tTemp.tsc.MmeGroupId);
+		tsam.MmeUeS1apId = (long) getValidData(tsam.MmeUeS1apId, tTemp.tsc.MmeUeS1apId);
+		tsam.Weight = tTemp.tsc.Weight;
+		tsam.LteScRSRP = tTemp.tsc.LteScRSRP;
+		tsam.LteScRSRQ = tTemp.tsc.LteScRSRQ;
+		tsam.LteScEarfcn = tTemp.tsc.LteScEarfcn;
+		tsam.LteScPci = tTemp.tsc.LteScPci;
+		tsam.LteScBSR = tTemp.tsc.LteScBSR;
+		tsam.LteScRTTD = tTemp.tsc.LteScRTTD;
+		tsam.LteScTadv = tTemp.tsc.LteScTadv;
+		tsam.LteScAOA = tTemp.tsc.LteScAOA;
+		tsam.LteScPHR = tTemp.tsc.LteScPHR;
+		tsam.LteScRIP = tTemp.tsc.LteScRIP;
+		tsam.LteScSinrUL = tTemp.tsc.LteScSinrUL;
+		tsam.LocFillType = 1;
+		tsam.MSISDN = tTemp.tsc.Msisdn;
+
+		if (tTemp.testType == 0)
+		{
+			tsam.testType = StaticConfig.TestType_DT_EX;
+		}
+		else
+		{
+			tsam.testType = tTemp.testType;
+		}
+
+		tsam.location = tTemp.location;
+		tsam.dist = tTemp.dist;
+		tsam.radius = tTemp.radius;
+		tsam.locType = tTemp.locType;
+		tsam.indoor = tTemp.indoor;
+		tsam.networktype = tTemp.networktype;
+		tsam.label = tTemp.label;
+
+		tsam.serviceType = tTemp.serviceType;
+		tsam.serviceSubType = tTemp.subServiceType;
+
+		tsam.moveDirect = tTemp.moveDirect;
+
+		tsam.LteScPUSCHPRBNum = tTemp.tsc.LteScPUSCHPRBNum;
+		tsam.LteScPDSCHPRBNum = tTemp.tsc.LteScPDSCHPRBNum;
+		tsam.imeiTac = tTemp.tsc.imeiTac;
+
+		if (tTemp.tsc.EventType.length() > 0)
+		{
+			if (tTemp.tsc.EventType.equals("MRO"))
+			{
+				tsam.flag = "MRO";
+			}
+			else
+			{
+				tsam.flag = "MRE";
+				tsam.mrType = tTemp.tsc.EventType;
+			}
+		}
+		else
+		{
+			tsam.flag = "MRO";
+			int mrTypeIndex = tTemp.tsc.UserLabel.indexOf(",");
+			if (mrTypeIndex >= 0)
+			{
+				tsam.flag = "MRE";
+				tsam.mrType = tTemp.tsc.UserLabel.substring(mrTypeIndex + 1);
+			}
+		}
+
+		for (int i = 0; i < tsam.nccount.length; i++)
+		{
+			tsam.nccount[i] = tTemp.nccount[i];
+		}
+
+		for (int i = 0; i < tsam.tlte.length; i++)
+		{
+			tsam.tlte[i] = tTemp.tlte[i];
+		}
+
+//		for (int i = 0; i < tsam.ttds.length; i++)
+//		{
+//			tsam.ttds[i] = tTemp.ttds[i];
+//		}
+
+		for (int i = 0; i < tsam.tgsm.length; i++)
+		{
+			tsam.tgsm[i] = tTemp.tgsm[i];
+		}
+
+//		for (int i = 0; i < tsam.trip.length; i++)
+//		{
+//			tsam.trip[i] = tTemp.trip[i];
+//		}
+
+		calJamType(tsam);
+
+		if (MainModel.GetInstance().getCompile().Assert(CompileMark.NoLowSample))
+		{
+			return;
+		}
+
+		try
+		{
+			if (tsam.testType == StaticConfig.TestType_DT)
+			{
+				if (tsam.ilongitude > 0)
+				{
+					String value = ResultHelper.getPutLteSample(tsam);
+					resultOutputer.pushData(MroCsFgTableEnum.fpsampledt.getIndex(), value);
+				}
+			}
+			else if (tsam.testType == StaticConfig.TestType_DT_EX || tsam.testType == StaticConfig.TestType_CPE)
+			{
+				if (tsam.ilongitude > 0)
+				{
+					String value = ResultHelper.getPutLteSample(tsam);
+					resultOutputer.pushData(MroCsFgTableEnum.fpsampledtex.getIndex(), value);
+				}
+			}
+			else if (tsam.testType == StaticConfig.TestType_CQT)
+			{
+				if (tsam.ilongitude > 0)
+				{
+					String value = ResultHelper.getPutLteSample(tsam);
+					resultOutputer.pushData(MroCsFgTableEnum.fpsamplecqt.getIndex(), value);
+				}
+			}
+			if (MainModel.GetInstance().getCompile().Assert(CompileMark.Debug))
+			{
+				// 吐出关联的中间结果
+				tmSb.delete(0, tmSb.length());
+				tmSb.append(tsam.Eci + "_" + tsam.MmeUeS1apId + "_" + tsam.itime);
+				tmSb.append("\t");
+				tmSb.append(tsam.Earfcn);
+				tmSb.append("_");
+				tmSb.append(tsam.LteScPci);
+				tmSb.append("_");
+				tmSb.append(tsam.LteScRSRP);
+				tmSb.append("_");
+				tmSb.append(tsam.IMSI);
+				tmSb.append("_");
+				tmSb.append(tsam.ilongitude);
+				tmSb.append("_");
+				tmSb.append(tsam.ilatitude);
+
+				resultOutputer.pushData(MroCsFgTableEnum.fpmroMore.getIndex(), tmSb.toString());
+			}
+
+		}
+		catch (Exception e)
+		{
+			LOGHelper.GetLogger().writeLog(LogType.error, "output event error ", e);
+			// TODO: handle exception
+		}
+
+	}
+
+	public void calJamType(DT_Sample_4G tsam)
+	{
+		if ((tsam.LteScRSRP < -50 && tsam.LteScRSRP > -150) && tsam.LteScRSRP > -110)
+		{
+			for (NC_LTE item : tsam.tlte)
+			{
+				if ((item.LteNcRSRP < -50 && item.LteNcRSRP > -150) && item.LteNcRSRP - tsam.LteScRSRP > -6)
+				{
+					if (tsam.Earfcn == item.LteNcEarfcn)
+					{
+						tsam.sfcnJamCellCount++;
+					}
+					else
+					{
+						tsam.dfcnJamCellCount++;
+					}
+				}
+			}
+		}
+	}
+
+	private Object getValidData(Object srcData, Object tarData)
+	{
+		if (tarData instanceof Integer)
+		{
+			if ((Integer) tarData != 0 && (Integer) tarData != StaticConfig.Int_Abnormal)
+			{
+				return tarData;
+			}
+			return srcData;
+		}
+		else if (tarData instanceof Long)
+		{
+			if ((Long) tarData != 0 && (Long) tarData != StaticConfig.Long_Abnormal)
+			{
+				return tarData;
+			}
+			return srcData;
+		}
+		return srcData;
+	}
+
+	public int getValidValueInt(int srcValue, int targValue)
+	{
+		if (targValue != StaticConfig.Int_Abnormal)
+		{
+			return targValue;
+		}
+		return srcValue;
+	}
+
+	public String getValidValueString(String srcValue, String targValue)
+	{
+		if (!targValue.equals(""))
+		{
+			return targValue;
+		}
+		return srcValue;
+	}
+
+	public long getValidValueLong(long srcValue, long targValue)
+	{
+		if (targValue != StaticConfig.Long_Abnormal)
+		{
+			return targValue;
+		}
+		return srcValue;
+	}
+
+}
